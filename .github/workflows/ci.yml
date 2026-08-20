@@ -31,10 +31,12 @@ jobs:
       - name: Generate secrets, exactly as a new fork does
         run: ./scripts/setup-env.sh
 
+      # Before the stack, deliberately: the api container writes the generated client into the
+      # bind-mounted source tree as root, so the directory has to exist owned by this user first.
+      - run: npm run -w apps/api prisma -- generate
+
       - name: Start the stack
         run: docker compose up -d --wait
-
-      - run: npm run -w apps/api prisma -- generate
 
       - name: Acceptance flow and AWS secret-store contract
         run: |

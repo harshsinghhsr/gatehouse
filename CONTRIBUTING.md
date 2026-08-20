@@ -5,10 +5,15 @@ Thanks for looking. Bug reports, provider adapters, and documentation fixes are 
 ## Getting a stack running
 
 ```bash
-./scripts/setup-env.sh     # writes .env with generated secrets
-docker compose up          # postgres, redis, litellm, api, web
-npm install                # for typecheck, tests, and editor support
+./scripts/setup-env.sh                      # writes .env with generated secrets
+npm install                                 # for typecheck, tests, and editor support
+npm run -w apps/api prisma -- generate      # before the first compose up, see below
+docker compose up                           # postgres, redis, litellm, api, web
 ```
+
+Generate the Prisma client on the host first. The api container writes it into the bind-mounted
+source tree, and on Linux it does so as root — if the container gets there first, host-side
+commands cannot overwrite it afterwards.
 
 The dashboard is on <http://localhost:3000>. `curl localhost:3001/ready` says which dependency is
 unhappy. Source is bind-mounted, so both apps reload on save.
