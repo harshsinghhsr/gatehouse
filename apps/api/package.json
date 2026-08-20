@@ -1,0 +1,32 @@
+{
+  "name": "@gatehouse/api",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "LOG_LEVEL=silent tsx --test 'test/**/*.test.ts'",
+    "prisma": "prisma",
+    "test:integration": "INTEGRATION=1 LOG_LEVEL=silent tsx --test 'test/**/*.test.ts'"
+  },
+  "dependencies": {
+    "@aws-sdk/client-secrets-manager": "^3.1114.0",
+    "@fastify/cookie": "^11.1.2",
+    "@fastify/cors": "^11.3.0",
+    "@fastify/rate-limit": "^11.2.0",
+    "@gatehouse/shared": "*",
+    "@prisma/adapter-pg": "^7.9.1",
+    "@prisma/client": "^7.9.1",
+    "fastify": "^5.2.1",
+    "ioredis": "^5.4.2",
+    "pino": "^10.3.1",
+    "prisma": "^7.9.1",
+    "tsx": "^4.19.2",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "typescript": "^5.7.2"
+  }
+}

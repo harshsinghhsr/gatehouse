@@ -1,0 +1,10 @@
+Gatehouse
+Copyright 2026 the Gatehouse contributors
+
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+This project depends on, but does not modify, redistribute, or fork, the
+LiteLLM proxy (https://github.com/BerriAI/litellm), which is used as an
+unmodified upstream container image (ghcr.io/berriai/litellm:v1.97.0).
+LiteLLM is MIT licensed, except for content under its enterprise/ directory,
+which carries a separate license and is not used by this project.

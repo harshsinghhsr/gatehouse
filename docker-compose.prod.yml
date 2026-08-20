@@ -1,0 +1,102 @@
+# Deployment stack:  docker compose -f docker-compose.prod.yml up -d --build
+#
+# Differences from the development stack that matter: no source is mounted, the datastores are
+# not published to the host, the API runs as an unprivileged user with NODE_ENV=production, the
+# dashboard is static files behind nginx, and everything restarts on its own.
+#
+# Put TLS in front of this — a reverse proxy, a load balancer, or Cloudflare. The API refuses to
+# boot in production with a plaintext WEB_ORIGIN, because the session cookie is Secure.
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./infrastructure/docker/initdb.sql:/docker-entrypoint-initdb.d/initdb.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: valkey/valkey:8-alpine
+    restart: unless-stopped
+    command: ["valkey-server", "--save", "60", "1"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 20
+
+  litellm:
+    image: ghcr.io/berriai/litellm:v1.97.0
+    restart: unless-stopped
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    environment:
+      DATABASE_URL: ${LITELLM_DATABASE_URL:?set LITELLM_DATABASE_URL in .env}
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:?set LITELLM_MASTER_KEY in .env}
+      LITELLM_SALT_KEY: ${LITELLM_SALT_KEY:?set LITELLM_SALT_KEY in .env}
+      STORE_MODEL_IN_DB: "True"
+    volumes:
+      - ./litellm/config.yaml:/app/config.yaml:ro
+    # This is the endpoint developers put in their SDK, so it is the one port besides the
+    # dashboard that has to be reachable.
+    ports: ["${GATEWAY_PORT:-4000}:4000"]
+    depends_on:
+      postgres: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request;urllib.request.urlopen('http://localhost:4000/health/liveliness')\""]
+      interval: 15s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+
+  api:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/Dockerfile.api
+    restart: unless-stopped
+    user: "node"
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL in .env}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      LITELLM_BASE_URL: ${LITELLM_BASE_URL:-http://litellm:4000}
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:?set LITELLM_MASTER_KEY in .env}
+      SECRETS_BACKEND: ${SECRETS_BACKEND:-file}
+      SECRETS_FILE: ${SECRETS_FILE:-/data/secrets.json}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      WEB_ORIGIN: ${WEB_ORIGIN:?set WEB_ORIGIN to your https dashboard URL}
+      GATEWAY_PUBLIC_URL: ${GATEWAY_PUBLIC_URL:?set GATEWAY_PUBLIC_URL to your https gateway URL}
+      ALLOW_SIGNUP: ${ALLOW_SIGNUP:-false}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      # One hop: the bundled nginx. Raise it only if you add more proxies in front.
+      TRUST_PROXY: ${TRUST_PROXY:-1}
+      PORT: "3001"
+    # Only used when SECRETS_BACKEND=file: provider credentials outlive the container.
+    volumes:
+      - secrets:/data
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      litellm: { condition: service_healthy }
+
+  web:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/Dockerfile.web
+      target: prod
+    restart: unless-stopped
+    ports: ["${WEB_PORT:-8080}:8080"]
+    depends_on:
+      api: { condition: service_healthy }
+
+volumes:
+  pgdata:
+  redisdata:
+  secrets:

@@ -1,0 +1,49 @@
+name: ci
+
+on:
+  push: { branches: [main] }
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npm run -w apps/api prisma -- generate
+        env: { DATABASE_URL: 'postgresql://unused:unused@localhost:5432/unused' }
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run -w apps/web build
+
+  # Proves the claim in the README: a fresh clone comes up with two commands and works.
+  # If this job passes, forking and deploying works.
+  stack:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+
+      - name: Generate secrets, exactly as a new fork does
+        run: ./scripts/setup-env.sh
+
+      - name: Start the stack
+        run: docker compose up -d --wait
+
+      - run: npm run -w apps/api prisma -- generate
+
+      - name: Acceptance flow and AWS secret-store contract
+        run: |
+          docker compose --profile aws up -d --wait localstack
+          INTEGRATION=1 npm run -w apps/api test
+
+      - name: Production images build
+        run: docker compose -f docker-compose.prod.yml build
+
+      - name: Service logs
+        if: failure()
+        run: docker compose logs --tail 120

@@ -1,0 +1,8 @@
+# Settings only. Models and provider credentials are created at RUNTIME by the control
+# plane via POST /credentials and POST /model/new — never listed here.
+# Pinned image: ghcr.io/berriai/litellm:v1.97.0
+general_settings:
+  store_model_in_db: true
+
+litellm_settings:
+  drop_params: true

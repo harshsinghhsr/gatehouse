@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.next/
+.env
+.env.*
+!.env.example
+*.log
+
+# Prisma 7 generates the client into the source tree
+apps/api/src/generated/
+*.tsbuildinfo

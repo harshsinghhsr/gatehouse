@@ -1,0 +1,115 @@
+# Development stack: hot reload, ports published for debugging, dev secrets.
+# For a real deployment use docker-compose.prod.yml.
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./infrastructure/docker/initdb.sql:/docker-entrypoint-initdb.d/initdb.sql:ro
+    ports: ["5432:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: valkey/valkey:8-alpine
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  litellm:
+    image: ghcr.io/berriai/litellm:v1.97.0
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    environment:
+      DATABASE_URL: ${LITELLM_DATABASE_URL}
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+      LITELLM_SALT_KEY: ${LITELLM_SALT_KEY}
+      STORE_MODEL_IN_DB: "True"
+    volumes:
+      - ./litellm/config.yaml:/app/config.yaml:ro
+    ports: ["4000:4000"]
+    depends_on:
+      postgres: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request;urllib.request.urlopen('http://localhost:4000/health/liveliness')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+
+  # AWS stand-in. Community edition covers Secrets Manager, the only AWS service this platform
+  # uses. Opt in with: docker compose --profile aws up -d localstack
+  localstack:
+    image: localstack/localstack:4
+    profiles: ["aws"]
+    environment:
+      SERVICES: secretsmanager
+      DEBUG: "0"
+    ports: ["4566:4566"]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:4566/_localstack/health | grep -q '\"secretsmanager\": \"available\"'"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+  api:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/Dockerfile.api
+    # The image entrypoint generates the Prisma client and applies migrations first.
+    command: ["npm", "run", "-w", "apps/api", "dev"]
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      LITELLM_BASE_URL: ${LITELLM_BASE_URL}
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+      SECRETS_BACKEND: ${SECRETS_BACKEND:-file}
+      SECRETS_FILE: ${SECRETS_FILE:-/tmp/gatehouse-secrets.json}
+      AWS_ENDPOINT_URL: ${AWS_ENDPOINT_URL:-}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:3000}
+      GATEWAY_PUBLIC_URL: ${GATEWAY_PUBLIC_URL:-http://localhost:4000}
+      ALLOW_SIGNUP: ${ALLOW_SIGNUP:-false}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      PORT: "3001"
+    # Hot reload: the source is mounted, node_modules stay from the image.
+    volumes:
+      - ./apps/api:/app/apps/api
+      - ./packages/shared:/app/packages/shared
+      - /app/node_modules
+      - /app/apps/api/node_modules
+    ports: ["3001:3001"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      litellm: { condition: service_healthy }
+
+  web:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/Dockerfile.web
+      target: dev
+    # The Vite dev server proxies /api here, exactly as nginx does in production.
+    environment:
+      API_PROXY_TARGET: http://api:3001
+    volumes:
+      - ./apps/web:/app/apps/web
+      - ./packages/shared:/app/packages/shared
+      - /app/node_modules
+      - /app/apps/web/node_modules
+    ports: ["3000:3000"]
+    depends_on: [api]
+
+volumes:
+  pgdata:
