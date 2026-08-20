@@ -17,6 +17,12 @@ import { hostUrl } from '../support/stack-env.js';
 
 const LOCALSTACK_URL = hostUrl(process.env.AWS_ENDPOINT_URL || 'http://localhost:4566');
 
+// LocalStack accepts any credentials, but the SDK still insists on resolving some. In production
+// these are absent and the task role supplies them instead.
+process.env.AWS_ACCESS_KEY_ID ||= 'test';
+process.env.AWS_SECRET_ACCESS_KEY ||= 'test';
+process.env.AWS_REGION ||= 'us-east-1';
+
 async function localstackIsUp(): Promise<boolean> {
   if (process.env.INTEGRATION !== '1') return false;
   try {
