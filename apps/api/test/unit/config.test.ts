@@ -18,6 +18,21 @@ describe('configuration', () => {
     assert.equal(config.secretsBackend, 'file');
   });
 
+  test('a blank variable means unset, not an empty value', () => {
+    // Docker Compose expands an unset variable to '', which used to kill the API at boot.
+    const config = loadConfig({
+      ...base,
+      AWS_ENDPOINT_URL: '',
+      GATEWAY_PUBLIC_URL: '',
+      LOG_LEVEL: '',
+      SECRETS_BACKEND: '',
+    });
+    assert.equal(config.awsEndpointUrl, undefined);
+    assert.equal(config.gatewayPublicUrl, base.LITELLM_BASE_URL, 'falls back rather than staying blank');
+    assert.equal(config.logLevel, 'info', 'the default applies');
+    assert.equal(config.secretsBackend, 'file');
+  });
+
   test('production refuses a placeholder master key', () => {
     assert.throws(
       () => loadConfig({ ...base, NODE_ENV: 'production', WEB_ORIGIN: 'https://gateway.example.com' }),

@@ -52,25 +52,27 @@ const configSchema = z.object({
 export type Config = z.infer<typeof configSchema>;
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
-  const result = configSchema.safeParse({
-    nodeEnv: env.NODE_ENV,
-    port: env.PORT,
-    logLevel: env.LOG_LEVEL,
-    databaseUrl: env.DATABASE_URL,
-    redisUrl: env.REDIS_URL,
-    litellmBaseUrl: env.LITELLM_BASE_URL,
-    litellmMasterKey: env.LITELLM_MASTER_KEY,
-    gatewayPublicUrl: env.GATEWAY_PUBLIC_URL ?? env.LITELLM_BASE_URL,
-    webOrigin: env.WEB_ORIGIN,
-    secretsBackend: env.SECRETS_BACKEND,
-    awsEndpointUrl: env.AWS_ENDPOINT_URL,
-    awsRegion: env.AWS_REGION,
-    secretsFile: env.SECRETS_FILE,
-    deployEnv: env.DEPLOY_ENV,
-    trustProxy: env.TRUST_PROXY,
-    allowSignup: env.ALLOW_SIGNUP,
-    sessionTtlSeconds: env.SESSION_TTL_SECONDS,
-  });
+  const result = configSchema.safeParse(
+    withoutBlanks({
+      nodeEnv: env.NODE_ENV,
+      port: env.PORT,
+      logLevel: env.LOG_LEVEL,
+      databaseUrl: env.DATABASE_URL,
+      redisUrl: env.REDIS_URL,
+      litellmBaseUrl: env.LITELLM_BASE_URL,
+      litellmMasterKey: env.LITELLM_MASTER_KEY,
+      gatewayPublicUrl: env.GATEWAY_PUBLIC_URL || env.LITELLM_BASE_URL,
+      webOrigin: env.WEB_ORIGIN,
+      secretsBackend: env.SECRETS_BACKEND,
+      awsEndpointUrl: env.AWS_ENDPOINT_URL,
+      awsRegion: env.AWS_REGION,
+      secretsFile: env.SECRETS_FILE,
+      deployEnv: env.DEPLOY_ENV,
+      trustProxy: env.TRUST_PROXY,
+      allowSignup: env.ALLOW_SIGNUP,
+      sessionTtlSeconds: env.SESSION_TTL_SECONDS,
+    }),
+  );
 
   if (!result.success) {
     // Fail loudly at boot rather than at the first request that needs the missing value.
@@ -79,6 +81,15 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   }
   assertProductionReady(result.data);
   return result.data;
+}
+
+/**
+ * Docker Compose passes an unset variable through as an empty string, and an empty string is not
+ * the same as absent: `.optional()` rejects it and `.default()` never fires. Dropping the blanks
+ * first is what lets `AWS_ENDPOINT_URL=` in .env mean "not configured".
+ */
+function withoutBlanks(input: Record<string, string | undefined>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined && value !== ''));
 }
 
 /**
