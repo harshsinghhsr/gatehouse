@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { formatCompact, formatCount, formatMoney } from '../../shared/lib/format';
-import { Dot, Empty, PageHead, Stat, Table } from '../../shared/ui';
+import { Badge, Empty, Meter, PageHead, Section, Stat, Status, Table } from '../../shared/ui';
 import {
   useHealth,
   useUsageByDeveloper,
@@ -19,14 +19,21 @@ export function DashboardPage() {
   const value = (render: (data: NonNullable<typeof totals.data>) => string) =>
     totals.data ? render(totals.data) : '—';
 
+  const topSpend = Math.max(...(byDeveloper.data?.map((row) => row.spend) ?? [0]), 0.0001);
+
   return (
     <div className="stack">
       <PageHead
-        title="Dashboard"
+        title="Overview"
         description={
           totals.data
             ? `Spend and traffic from ${totals.data.range.from} to ${totals.data.range.to}, as metered by the gateway.`
             : 'Spend and traffic, as metered by the gateway.'
+        }
+        action={
+          <Link className="btn" to="/usage">
+            View usage
+          </Link>
         }
       />
 
@@ -39,28 +46,31 @@ export function DashboardPage() {
         <Stat label="Models live" value={value((d) => String(d.activeModels))} />
       </div>
 
-      <div className="grid grid-half">
-        <section>
-          <h2>Spend by developer</h2>
-          <Table head={['Developer', '>Requests', '>Spend']}>
-            {byDeveloper.data?.length === 0 && (
-              <Empty>No traffic yet. Issue a key on a developer to get started.</Empty>
-            )}
-            {byDeveloper.data?.map((row) => (
-              <tr key={row.id}>
-                <td>
-                  <Link to={`/developers/${row.id}`}>{row.name}</Link>
-                  <div className="mono muted">{row.email}</div>
-                </td>
-                <td className="num">{formatCount(row.requests)}</td>
-                <td className="num">{formatMoney(row.spend)}</td>
-              </tr>
-            ))}
-          </Table>
-        </section>
+      <Section title="Spend by developer">
+        <Table head={['Developer', 'Share', '>Requests', '>Spend']}>
+          {byDeveloper.data?.length === 0 && (
+            <Empty title="No traffic yet" action={<Link className="btn small" to="/developers">Add a developer</Link>}>
+              Issue a key on a developer and their spend shows up here.
+            </Empty>
+          )}
+          {byDeveloper.data?.map((row) => (
+            <tr key={row.id}>
+              <td>
+                <Link to={`/developers/${row.id}`}>{row.name}</Link>
+                <div className="mono muted">{row.email}</div>
+              </td>
+              <td style={{ width: '28%' }}>
+                <Meter ratio={row.spend / topSpend} />
+              </td>
+              <td className="num">{formatCount(row.requests)}</td>
+              <td className="num">{formatMoney(row.spend)}</td>
+            </tr>
+          ))}
+        </Table>
+      </Section>
 
-        <section>
-          <h2>Spend by model</h2>
+      <div className="grid grid-half">
+        <Section title="Spend by model">
           <Table head={['Model', '>Requests', '>Spend']}>
             {byModel.data?.length === 0 && <Empty>Nothing metered in this window.</Empty>}
             {byModel.data?.map((row) => (
@@ -71,37 +81,40 @@ export function DashboardPage() {
               </tr>
             ))}
           </Table>
-        </section>
+        </Section>
 
-        <section>
-          <h2>Spend by provider</h2>
+        <Section title="Spend by provider">
           <Table head={['Provider', '>Requests', '>Spend']}>
             {byProvider.data?.length === 0 && <Empty>Nothing metered in this window.</Empty>}
             {byProvider.data?.map((row) => (
               <tr key={row.name}>
-                <td className="mono">{row.name}</td>
+                <td>{row.name}</td>
                 <td className="num">{formatCount(row.requests)}</td>
                 <td className="num">{formatMoney(row.spend)}</td>
               </tr>
             ))}
           </Table>
-        </section>
-
-        <section>
-          <h2>Stack</h2>
-          <div className="card card-pad">
-            {Object.entries(health.data?.services ?? { gateway: 'down' }).map(([name, state]) => (
-              <div key={name} className="row" style={{ justifyContent: 'space-between', padding: '5px 0' }}>
-                <span>
-                  <Dot state={state === 'ok' ? 'ok' : 'down'} />
-                  {name}
-                </span>
-                <span className="mono muted">{state}</span>
-              </div>
-            ))}
-          </div>
-        </section>
+        </Section>
       </div>
+
+      <Section title="Stack" description="Everything this control plane depends on.">
+        <div className="card">
+          {Object.entries(health.data?.services ?? { gateway: 'down' }).map(([name, state], index) => (
+            <div
+              key={name}
+              className="row"
+              style={{
+                justifyContent: 'space-between',
+                padding: '12px 20px',
+                borderTop: index === 0 ? 'none' : '1px solid var(--gray-200)',
+              }}
+            >
+              <Status state={state === 'ok' ? 'ok' : 'down'}>{name}</Status>
+              <Badge tone={state === 'ok' ? 'ok' : 'error'}>{state}</Badge>
+            </div>
+          ))}
+        </div>
+      </Section>
     </div>
   );
 }

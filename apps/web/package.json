@@ -10,11 +10,11 @@
   },
   "dependencies": {
     "@gatehouse/shared": "*",
+    "@hookform/resolvers": "^5.0.1",
     "@tanstack/react-query": "^5.62.11",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-hook-form": "^7.54.2",
-    "@hookform/resolvers": "^5.0.1",
     "react-router-dom": "^7.1.1",
     "zod": "^4.4.3"
   },

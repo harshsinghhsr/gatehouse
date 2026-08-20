@@ -42,6 +42,9 @@ The backend is layered. Each rule below exists because breaking it caused a real
 - Gateway keys: the plaintext is returned exactly once and never stored. We keep alias +
   `token_id` + a masked prefix; revocation goes through the alias.
 - `organizationId` always comes from the session, never from a request body or query.
+- **The design system is Geist, and it lives in `apps/web/src/styles/global.css`.** Components
+  come from `shared/ui`; pages compose them and never invent a one-off style. Reach for a token,
+  not a hex value, and check both themes before calling it done.
 - The browser talks to the API same-origin under `/api` (nginx in production, the Vite proxy in
   development). Nothing environment-specific is ever baked into the frontend bundle.
 - This is meant to be forked and deployed unmodified: a change that only works with hand-editing

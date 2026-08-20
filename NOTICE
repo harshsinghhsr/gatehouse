@@ -8,3 +8,8 @@ LiteLLM proxy (https://github.com/BerriAI/litellm), which is used as an
 unmodified upstream container image (ghcr.io/berriai/litellm:v1.97.0).
 LiteLLM is MIT licensed, except for content under its enterprise/ directory,
 which carries a separate license and is not used by this project.
+
+The dashboard bundles the Geist and Geist Mono typefaces (apps/web/public/fonts),
+Copyright (c) 2023 Vercel, in collaboration with basement.studio, licensed under
+the SIL Open Font License 1.1. The full licence ships alongside the fonts at
+apps/web/public/fonts/GEIST-LICENSE.txt.

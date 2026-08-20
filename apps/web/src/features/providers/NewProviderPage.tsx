@@ -1,7 +1,7 @@
 import type { ProviderType } from '@gatehouse/shared';
 import { type FormEvent, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Field, Notice, PageHead, QueryState } from '../../shared/ui';
+import { Field, FormCard, Notice, PageHead, QueryState } from '../../shared/ui';
 import { useCreateProvider, useProviderTypes } from './queries';
 
 /**
@@ -45,10 +45,23 @@ export function NewProviderPage() {
       <PageHead
         title="Add provider"
         description="The credential is checked against the provider before anything is stored. That check runs on the server — the browser never contacts the provider."
+        action={
+          <button type="button" onClick={() => navigate(-1)}>
+            Cancel
+          </button>
+        }
       />
 
       <QueryState isPending={types.isPending} error={types.error}>
-        <form className="card card-pad" style={{ maxWidth: 560 }} onSubmit={submit}>
+        <FormCard
+          hint="Verified before it is saved."
+          action={
+            <button type="submit" className="primary" disabled={createProvider.isPending}>
+              {createProvider.isPending ? 'Checking credential…' : 'Add provider'}
+            </button>
+          }
+          onSubmit={submit}
+        >
           <Field label="Provider">
             <select
               value={chosen?.type ?? ''}
@@ -79,20 +92,11 @@ export function NewProviderPage() {
           ))}
 
           {createProvider.error && (
-            <div style={{ margin: '4px 0 14px' }}>
+            <div style={{ marginBottom: 16 }}>
               <Notice kind="error">{createProvider.error.message}</Notice>
             </div>
           )}
-
-          <div className="row">
-            <button type="submit" className="primary" disabled={createProvider.isPending}>
-              {createProvider.isPending ? 'Checking credential…' : 'Add provider'}
-            </button>
-            <button type="button" onClick={() => navigate(-1)}>
-              Cancel
-            </button>
-          </div>
-        </form>
+        </FormCard>
       </QueryState>
     </div>
   );

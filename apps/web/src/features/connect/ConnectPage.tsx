@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { formatDate } from '../../shared/lib/format';
-import { Empty, PageHead, QueryState, Table } from '../../shared/ui';
+import { Code, Empty, PageHead, QueryState, Section, Table } from '../../shared/ui';
 import { useConnectInfo } from '../usage/queries';
 
 /** Everything a developer needs to point an SDK at the gateway, with their own models filled in. */
@@ -20,58 +20,57 @@ export function ConnectPage() {
         {connect.data && (
           <>
             <div className="grid grid-half">
-              <div className="card card-pad">
-                <div className="stat-label">OpenAI base URL</div>
-                <pre style={{ marginTop: 8 }}>{connect.data.openai.baseUrl}</pre>
-              </div>
-              <div className="card card-pad">
-                <div className="stat-label">Anthropic base URL</div>
-                <pre style={{ marginTop: 8 }}>{connect.data.anthropic.baseUrl}</pre>
-              </div>
+              <Section title="OpenAI base URL">
+                <Code>{connect.data.openai.baseUrl}</Code>
+              </Section>
+              <Section title="Anthropic base URL">
+                <Code>{connect.data.anthropic.baseUrl}</Code>
+              </Section>
             </div>
 
-            <section>
-              <h2>Your keys</h2>
-              <Table head={['Key', 'Created']}>
-                {connect.data.keys.length === 0 && (
-                  <Empty>You have no active key. An admin can issue one for you.</Empty>
-                )}
-                {connect.data.keys.map((key) => (
-                  <tr key={key.id}>
-                    <td className="mono">{key.keyPrefix ?? '—'}</td>
-                    <td className="mono muted">{formatDate(key.createdAt)}</td>
-                  </tr>
-                ))}
-              </Table>
-            </section>
-
-            <section>
-              <h2>Models you can call</h2>
+            <Section title="Models you can call" description="Pick one to rewrite the snippets below.">
               <div className="card card-pad row">
-                {connect.data.models.length === 0 && <span className="muted">No models granted yet.</span>}
+                {connect.data.models.length === 0 && (
+                  <span className="muted">No models granted yet. An admin can grant them.</span>
+                )}
                 {connect.data.models.map((name) => (
                   <button
                     key={name}
                     type="button"
                     className={name === model ? 'primary small' : 'small'}
+                    aria-pressed={name === model}
                     onClick={() => setChosen(name)}
                   >
-                    {name}
+                    <span className="mono" style={{ fontSize: 12 }}>
+                      {name}
+                    </span>
                   </button>
                 ))}
               </div>
-            </section>
+            </Section>
 
             <div className="grid grid-half">
-              <section>
-                <h2>OpenAI SDK</h2>
-                <pre>{openAiSnippet(connect.data.openai.baseUrl, model)}</pre>
-              </section>
-              <section>
-                <h2>Anthropic SDK</h2>
-                <pre>{anthropicSnippet(connect.data.anthropic.baseUrl, model)}</pre>
-              </section>
+              <Section title="OpenAI SDK">
+                <Code>{openAiSnippet(connect.data.openai.baseUrl, model)}</Code>
+              </Section>
+              <Section title="Anthropic SDK">
+                <Code>{anthropicSnippet(connect.data.anthropic.baseUrl, model)}</Code>
+              </Section>
             </div>
+
+            <Section title="Your keys">
+              <Table head={['Key', 'Created']}>
+                {connect.data.keys.length === 0 && (
+                  <Empty title="No active key">An admin can issue one for you from your developer page.</Empty>
+                )}
+                {connect.data.keys.map((key) => (
+                  <tr key={key.id}>
+                    <td className="mono">{key.keyPrefix ?? '—'}</td>
+                    <td className="muted">{formatDate(key.createdAt)}</td>
+                  </tr>
+                ))}
+              </Table>
+            </Section>
           </>
         )}
       </QueryState>

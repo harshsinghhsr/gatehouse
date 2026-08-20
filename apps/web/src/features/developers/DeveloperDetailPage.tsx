@@ -1,8 +1,20 @@
 import type { IssuedKey } from '@gatehouse/shared';
 import { type FormEvent, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { formatDate } from '../../shared/lib/format';
-import { BudgetRail, Empty, Field, Notice, PageHead, QueryState, Table } from '../../shared/ui';
+import {
+  Badge,
+  BudgetRail,
+  Code,
+  Empty,
+  Field,
+  FormCard,
+  Notice,
+  PageHead,
+  QueryState,
+  Section,
+  Table,
+} from '../../shared/ui';
 import { useModels } from '../models/queries';
 import {
   useDeveloper,
@@ -51,6 +63,12 @@ export function DeveloperDetailPage() {
     <QueryState isPending={developer.isPending} error={developer.error}>
       {developer.data && (
         <div className="stack">
+          <div className="row" style={{ marginBottom: -12 }}>
+            <Link className="link muted" to="/developers">
+              ← Developers
+            </Link>
+          </div>
+
           <PageHead
             title={developer.data.name}
             description={[
@@ -64,14 +82,6 @@ export function DeveloperDetailPage() {
               <div className="row">
                 <button
                   type="button"
-                  className="primary"
-                  disabled={developer.data.status !== 'ACTIVE' || issueKey.isPending}
-                  onClick={() => issueKey.mutate(undefined, { onSuccess: setIssued })}
-                >
-                  Create key
-                </button>
-                <button
-                  type="button"
                   disabled={updateDeveloper.isPending}
                   onClick={() =>
                     updateDeveloper.mutate({
@@ -81,6 +91,14 @@ export function DeveloperDetailPage() {
                 >
                   {developer.data.status === 'ACTIVE' ? 'Disable' : 'Enable'}
                 </button>
+                <button
+                  type="button"
+                  className="primary"
+                  disabled={developer.data.status !== 'ACTIVE' || issueKey.isPending}
+                  onClick={() => issueKey.mutate(undefined, { onSuccess: setIssued })}
+                >
+                  Create key
+                </button>
               </div>
             }
           />
@@ -88,16 +106,16 @@ export function DeveloperDetailPage() {
           {issueKey.error && <Notice kind="error">{issueKey.error.message}</Notice>}
 
           {issued && (
-            <div className="card card-pad">
-              <h2>Copy this key now</h2>
-              <p className="muted" style={{ marginTop: 0 }}>
-                It is shown once and is not stored anywhere in this platform. If it is lost, rotate the key.
-              </p>
-              <pre>{issued.key}</pre>
-              <div className="row" style={{ marginTop: 12 }}>
-                <button type="button" onClick={() => navigator.clipboard.writeText(issued.key)}>
-                  Copy
-                </button>
+            <div className="card">
+              <div className="card-pad">
+                <h2>Copy this key now</h2>
+                <p className="hint" style={{ margin: '4px 0 14px' }}>
+                  It is shown once and is not stored anywhere in this platform. If it is lost, rotate the key.
+                </p>
+                <Code>{issued.key}</Code>
+              </div>
+              <div className="card-foot">
+                <span>Anyone holding this key can spend against this developer&rsquo;s budget.</span>
                 <button type="button" onClick={() => setIssued(null)}>
                   Done
                 </button>
@@ -106,10 +124,18 @@ export function DeveloperDetailPage() {
           )}
 
           <div className="grid grid-half">
-            <section>
-              <h2>Budget</h2>
-              <form className="card card-pad" onSubmit={saveBudget}>
-                <div style={{ marginBottom: 16 }}>
+            <Section title="Budget">
+              <FormCard
+                maxWidth={9999}
+                hint="The gateway refuses requests past the cap."
+                action={
+                  <button type="submit" className="primary" disabled={updateDeveloper.isPending}>
+                    Save budget
+                  </button>
+                }
+                onSubmit={saveBudget}
+              >
+                <div style={{ marginBottom: 20 }}>
                   <BudgetRail
                     spend={developer.data.spend ?? 0}
                     budget={developer.data.budget?.maxBudget ?? null}
@@ -132,7 +158,7 @@ export function DeveloperDetailPage() {
                     <option value="DAILY">Daily</option>
                   </select>
                 </Field>
-                <Field label="Requests per minute (optional)">
+                <Field label="Requests per minute" hint="Optional.">
                   <input
                     name="rpmLimit"
                     type="number"
@@ -140,20 +166,27 @@ export function DeveloperDetailPage() {
                     defaultValue={developer.data.budget?.rpmLimit ?? ''}
                   />
                 </Field>
+              </FormCard>
+            </Section>
 
-                <button type="submit" className="primary" disabled={updateDeveloper.isPending}>
-                  Save budget
-                </button>
-                <div className="hint">The gateway enforces this. Requests past the cap are refused.</div>
-              </form>
-            </section>
-
-            <section>
-              <h2>Models</h2>
-              <form className="card card-pad" onSubmit={saveModels}>
+            <Section title="Models">
+              <FormCard
+                maxWidth={9999}
+                hint="Saving updates every live key immediately."
+                action={
+                  <button
+                    type="submit"
+                    className="primary"
+                    disabled={setModels.isPending || !models.data?.length}
+                  >
+                    Save access
+                  </button>
+                }
+                onSubmit={saveModels}
+              >
                 {models.data?.length === 0 && <p className="muted">No models exist yet.</p>}
                 {models.data?.map((model) => (
-                  <label key={model.id} className="row" style={{ fontWeight: 400, marginBottom: 8 }}>
+                  <label key={model.id} className="choice">
                     <input
                       type="checkbox"
                       name="model"
@@ -164,27 +197,23 @@ export function DeveloperDetailPage() {
                     <span className="muted">{model.provider.name}</span>
                   </label>
                 ))}
-
-                {models.data && models.data.length > 0 && (
-                  <button type="submit" className="primary" style={{ marginTop: 10 }} disabled={setModels.isPending}>
-                    Save access
-                  </button>
-                )}
-                <div className="hint">Saving updates every live key immediately.</div>
-              </form>
-            </section>
+              </FormCard>
+            </Section>
           </div>
 
-          <section>
-            <h2>Keys</h2>
+          <Section title="Keys">
             <Table head={['Key', 'Alias', 'Status', 'Created', '']}>
-              {developer.data.keys.length === 0 && <Empty>No keys issued yet.</Empty>}
+              {developer.data.keys.length === 0 && (
+                <Empty title="No keys issued yet">Create one above. The plaintext is shown exactly once.</Empty>
+              )}
               {developer.data.keys.map((key) => (
                 <tr key={key.id}>
                   <td className="mono">{key.keyPrefix ?? '—'}</td>
                   <td className="mono muted">{key.keyAlias}</td>
-                  <td>{key.status.toLowerCase()}</td>
-                  <td className="mono muted">{formatDate(key.createdAt)}</td>
+                  <td>
+                    <Badge tone={key.status === 'ACTIVE' ? 'ok' : 'neutral'}>{key.status.toLowerCase()}</Badge>
+                  </td>
+                  <td className="muted">{formatDate(key.createdAt)}</td>
                   <td className="num">
                     {key.status === 'ACTIVE' && (
                       <div className="row" style={{ justifyContent: 'flex-end' }}>
@@ -212,7 +241,7 @@ export function DeveloperDetailPage() {
                 </tr>
               ))}
             </Table>
-          </section>
+          </Section>
         </div>
       )}
     </QueryState>

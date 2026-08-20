@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { Empty, PageHead, QueryState, Table } from '../../shared/ui';
+import { Badge, Empty, PageHead, QueryState, Table } from '../../shared/ui';
 import { useModels, useSetModelEnabled } from './queries';
 
 export function ModelsPage() {
@@ -15,7 +15,18 @@ export function ModelsPage() {
 
       <QueryState isPending={models.isPending} error={models.error}>
         <Table head={['Public name', 'Provider', 'Upstream', 'Gateway name', 'State', '']}>
-          {models.data?.length === 0 && <Empty>No models yet. Add one from a provider.</Empty>}
+          {models.data?.length === 0 && (
+            <Empty
+              title="No models yet"
+              action={
+                <Link className="btn small" to="/providers">
+                  Open a provider
+                </Link>
+              }
+            >
+              Models are added from the provider that serves them.
+            </Empty>
+          )}
           {models.data?.map((model) => (
             <tr key={model.id}>
               <td className="mono">{model.publicModelName}</td>
@@ -24,7 +35,9 @@ export function ModelsPage() {
               </td>
               <td className="mono muted">{model.providerModelName}</td>
               <td className="mono muted">{model.gatewayModelName}</td>
-              <td>{model.enabled ? 'Live' : 'Disabled'}</td>
+              <td>
+                <Badge tone={model.enabled ? 'ok' : 'neutral'}>{model.enabled ? 'Live' : 'Disabled'}</Badge>
+              </td>
               <td className="num">
                 <button
                   type="button"

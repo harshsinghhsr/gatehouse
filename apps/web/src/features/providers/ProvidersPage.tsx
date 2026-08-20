@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { formatDateTime } from '../../shared/lib/format';
-import { Dot, Empty, PageHead, QueryState, Table } from '../../shared/ui';
+import { Badge, Empty, PageHead, QueryState, Status, Table } from '../../shared/ui';
 import { useProviders } from './queries';
 
 export function ProvidersPage() {
@@ -21,7 +21,16 @@ export function ProvidersPage() {
       <QueryState isPending={providers.isPending} error={providers.error}>
         <Table head={['Provider', 'Type', 'Status', '>Models', 'Last check']}>
           {providers.data?.length === 0 && (
-            <Empty>No providers yet. Add Azure OpenAI, OpenAI, or Anthropic to begin.</Empty>
+            <Empty
+              title="No providers yet"
+              action={
+                <Link className="btn btn-primary small" to="/providers/new">
+                  Add provider
+                </Link>
+              }
+            >
+              Connect Azure OpenAI, OpenAI, or Anthropic. Your credential never leaves the server.
+            </Empty>
           )}
           {providers.data?.map((provider) => (
             <tr key={provider.id}>
@@ -30,12 +39,17 @@ export function ProvidersPage() {
               </td>
               <td className="muted">{provider.displayName}</td>
               <td>
-                <Dot state={provider.lastTestError ? 'down' : provider.status === 'ACTIVE' ? 'ok' : 'idle'} />
-                {provider.lastTestError ? 'Failing' : provider.status === 'ACTIVE' ? 'Active' : 'Disabled'}
+                {provider.lastTestError ? (
+                  <Status state="down">Failing</Status>
+                ) : provider.status === 'ACTIVE' ? (
+                  <Status state="ok">Active</Status>
+                ) : (
+                  <Status state="idle">Disabled</Status>
+                )}
               </td>
               <td className="num">{provider.modelCount}</td>
-              <td className="mono muted">
-                {provider.lastTestedAt ? formatDateTime(provider.lastTestedAt) : 'never'}
+              <td className="muted">
+                {provider.lastTestedAt ? formatDateTime(provider.lastTestedAt) : <Badge>never</Badge>}
               </td>
             </tr>
           ))}

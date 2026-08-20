@@ -1,5 +1,5 @@
 import { type FormEvent, useState } from 'react';
-import { Empty, Field, PageHead, QueryState, Table } from '../../shared/ui';
+import { Empty, FormCard, PageHead, QueryState, Section, Table } from '../../shared/ui';
 import { useDevelopers } from '../developers/queries';
 import { useModels } from '../models/queries';
 import {
@@ -21,10 +21,7 @@ export function TeamsPage() {
   function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
-    createTeam.mutate(
-      { name: String(new FormData(form).get('name')) },
-      { onSuccess: () => form.reset() },
-    );
+    createTeam.mutate({ name: String(new FormData(form).get('name')) }, { onSuccess: () => form.reset() });
   }
 
   return (
@@ -36,7 +33,9 @@ export function TeamsPage() {
 
       <QueryState isPending={teams.isPending} error={teams.error}>
         <Table head={['Team', 'Slug', '>Members', '']}>
-          {teams.data?.length === 0 && <Empty>No teams yet.</Empty>}
+          {teams.data?.length === 0 && (
+            <Empty title="No teams yet">Create one below, then add members and grant models once.</Empty>
+          )}
           {teams.data?.map((team) => (
             <tr key={team.id}>
               <td>
@@ -47,19 +46,24 @@ export function TeamsPage() {
               <td className="mono muted">{team.slug}</td>
               <td className="num">{team.memberCount}</td>
               <td className="num">
-                <button
-                  type="button"
-                  className="small danger"
-                  onClick={() => {
-                    if (confirm(`Delete ${team.name}? Members keep their own grants.`)) {
-                      deleteTeam.mutate(team.id, {
-                        onSuccess: () => setOpenTeamId((current) => (current === team.id ? null : current)),
-                      });
-                    }
-                  }}
-                >
-                  Delete
-                </button>
+                <div className="row" style={{ justifyContent: 'flex-end' }}>
+                  <button type="button" className="small" onClick={() => setOpenTeamId(team.id)}>
+                    Manage
+                  </button>
+                  <button
+                    type="button"
+                    className="small danger"
+                    onClick={() => {
+                      if (confirm(`Delete ${team.name}? Members keep their own grants.`)) {
+                        deleteTeam.mutate(team.id, {
+                          onSuccess: () => setOpenTeamId((current) => (current === team.id ? null : current)),
+                        });
+                      }
+                    }}
+                  >
+                    Delete
+                  </button>
+                </div>
               </td>
             </tr>
           ))}
@@ -68,15 +72,14 @@ export function TeamsPage() {
 
       {openTeamId && <TeamEditor teamId={openTeamId} />}
 
-      <section>
-        <h2>New team</h2>
+      <Section title="New team">
         <form className="card card-pad row" style={{ maxWidth: 480 }} onSubmit={create}>
-          <input name="name" required maxLength={80} placeholder="Platform" style={{ flex: 1 }} />
+          <input name="name" required maxLength={80} placeholder="Platform" style={{ flex: 1, width: 'auto' }} />
           <button type="submit" className="primary" disabled={createTeam.isPending}>
             Create team
           </button>
         </form>
-      </section>
+      </Section>
     </div>
   );
 }
@@ -94,12 +97,19 @@ function TeamEditor({ teamId }: { teamId: string }) {
     <QueryState isPending={team.isPending} error={team.error}>
       {team.data && (
         <div className="grid grid-half">
-          <section>
-            <h2>{team.data.name} · members</h2>
-            <div className="card card-pad">
-              {team.data.members.length === 0 && <p className="muted">No members yet.</p>}
-              {team.data.members.map((member) => (
-                <div key={member.id} className="row" style={{ justifyContent: 'space-between', padding: '4px 0' }}>
+          <Section title={`${team.data.name} · members`}>
+            <div className="card">
+              {team.data.members.length === 0 && <div className="card-pad muted">No members yet.</div>}
+              {team.data.members.map((member, index) => (
+                <div
+                  key={member.id}
+                  className="row"
+                  style={{
+                    justifyContent: 'space-between',
+                    padding: '10px 20px',
+                    borderTop: index === 0 ? 'none' : '1px solid var(--gray-200)',
+                  }}
+                >
                   <span>
                     {member.name} <span className="mono muted">{member.email}</span>
                   </span>
@@ -110,32 +120,35 @@ function TeamEditor({ teamId }: { teamId: string }) {
               ))}
 
               <form
-                style={{ marginTop: 14 }}
+                className="card-foot"
                 onSubmit={(event) => {
                   event.preventDefault();
                   addMember.mutate(String(new FormData(event.currentTarget).get('userId')));
                 }}
               >
-                <Field label="Add member">
-                  <select name="userId">
-                    {developers.data?.map((developer) => (
-                      <option key={developer.id} value={developer.id}>
-                        {developer.name} — {developer.email}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
+                <select name="userId" aria-label="Add member" style={{ flex: 1 }}>
+                  {developers.data?.map((developer) => (
+                    <option key={developer.id} value={developer.id}>
+                      {developer.name} — {developer.email}
+                    </option>
+                  ))}
+                </select>
                 <button type="submit" disabled={addMember.isPending}>
-                  Add to team
+                  Add
                 </button>
               </form>
             </div>
-          </section>
+          </Section>
 
-          <section>
-            <h2>{team.data.name} · models</h2>
-            <form
-              className="card card-pad"
+          <Section title={`${team.data.name} · models`}>
+            <FormCard
+              maxWidth={9999}
+              hint="Applies to every member's live keys."
+              action={
+                <button type="submit" className="primary" disabled={setTeamModels.isPending}>
+                  Save access
+                </button>
+              }
               onSubmit={(event) => {
                 event.preventDefault();
                 const modelIds = new FormData(event.currentTarget).getAll('model').map(String);
@@ -144,7 +157,7 @@ function TeamEditor({ teamId }: { teamId: string }) {
             >
               {models.data?.length === 0 && <p className="muted">No models exist yet.</p>}
               {models.data?.map((model) => (
-                <label key={model.id} className="row" style={{ fontWeight: 400, marginBottom: 8 }}>
+                <label key={model.id} className="choice">
                   <input
                     type="checkbox"
                     name="model"
@@ -154,11 +167,8 @@ function TeamEditor({ teamId }: { teamId: string }) {
                   <span className="mono">{model.publicModelName}</span>
                 </label>
               ))}
-              <button type="submit" className="primary" style={{ marginTop: 10 }} disabled={setTeamModels.isPending}>
-                Save access
-              </button>
-            </form>
-          </section>
+            </FormCard>
+          </Section>
         </div>
       )}
     </QueryState>

@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { formatCompact, formatCount, formatMoney, trailingDays } from '../../shared/lib/format';
-import { Empty, PageHead, QueryState, Stat, Table } from '../../shared/ui';
+import { Empty, Meter, PageHead, QueryState, Section, Stat, Table } from '../../shared/ui';
 import { useUsageTotals } from './queries';
 
 const RANGES = [
-  { label: '7 days', days: 7 },
-  { label: '30 days', days: 30 },
-  { label: '90 days', days: 90 },
+  { label: '7d', days: 7 },
+  { label: '30d', days: 30 },
+  { label: '90d', days: 90 },
 ];
 
 export function UsagePage() {
@@ -22,12 +22,13 @@ export function UsagePage() {
         title="Usage"
         description="Metered by the gateway at request time. These are the same figures your providers bill you for."
         action={
-          <div className="row">
+          <div className="row" style={{ gap: 4 }} role="group" aria-label="Date range">
             {RANGES.map((option) => (
               <button
                 key={option.days}
                 type="button"
-                className={days === option.days ? 'primary' : ''}
+                className={days === option.days ? 'primary small' : 'small'}
+                aria-pressed={days === option.days}
                 onClick={() => setDays(option.days)}
               >
                 {option.label}
@@ -38,14 +39,13 @@ export function UsagePage() {
       />
 
       <div className="grid grid-stats">
-        <Stat label="Spend" value={usage.data ? formatMoney(usage.data.spend) : '—'} />
+        <Stat label="Spend" value={usage.data ? formatMoney(usage.data.spend) : '—'} sub={`Last ${days} days`} />
         <Stat label="Requests" value={usage.data ? formatCount(usage.data.requests) : '—'} />
         <Stat label="Input tokens" value={usage.data ? formatCompact(usage.data.inputTokens) : '—'} />
         <Stat label="Output tokens" value={usage.data ? formatCompact(usage.data.outputTokens) : '—'} />
       </div>
 
-      <section>
-        <h2>Daily spend</h2>
+      <Section title="Daily spend" description="Each bar is relative to the busiest day in the window.">
         <QueryState isPending={usage.isPending} error={usage.error}>
           <Table head={['Date', 'Share', '>Requests', '>Spend']}>
             {usage.data?.daily.length === 0 && <Empty>Nothing metered in this window.</Empty>}
@@ -53,9 +53,7 @@ export function UsagePage() {
               <tr key={day.date}>
                 <td className="mono">{day.date}</td>
                 <td style={{ width: '45%' }}>
-                  <div className="rail">
-                    <i style={{ width: `${(day.spend / peak) * 100}%` }} />
-                  </div>
+                  <Meter ratio={day.spend / peak} />
                 </td>
                 <td className="num">{formatCount(day.requests)}</td>
                 <td className="num">{formatMoney(day.spend)}</td>
@@ -63,7 +61,7 @@ export function UsagePage() {
             ))}
           </Table>
         </QueryState>
-      </section>
+      </Section>
     </div>
   );
 }

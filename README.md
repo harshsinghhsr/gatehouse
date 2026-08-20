@@ -203,7 +203,12 @@ container.ts   composition root: builds everything once
 Services depend on interfaces (`UnitOfWork`, `LlmGateway`, `SecretStore`, …), never on Prisma or
 `fetch`, so a unit test hands them an in-memory fake instead of a database. `packages/shared` holds
 the zod contracts both apps import, so a payload change breaks the build rather than production.
-The frontend is React on Vite, with TanStack Query owning all server state.
+The frontend is React on Vite, with TanStack Query owning all server state. Its design system
+follows Geist — a neutral grayscale with one blue accent, hairline borders instead of shadows,
+6px controls inside 12px cards, and light and dark themes that follow the system unless you pick
+one. The tokens and every component live in one file, `src/styles/global.css`, so the look changes
+in one place. Geist itself is vendored under `public/fonts`, so the dashboard makes no third-party
+request and works air-gapped.
 
 The API runs TypeScript directly through `tsx`, in development and production alike — one code
 path, no build artifact to get stale. [CONTRIBUTING.md](CONTRIBUTING.md) has the rules that keep

@@ -1,6 +1,6 @@
 import { type FormEvent } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
-import { Empty, Field, Notice, PageHead, QueryState, Table } from '../../shared/ui';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Badge, Empty, Field, FormCard, Notice, PageHead, QueryState, Section, Table } from '../../shared/ui';
 import { useCreateModel, useDeleteModel, useModels } from '../models/queries';
 import { useDeleteProvider, useProvider, useTestProvider } from './queries';
 
@@ -37,6 +37,12 @@ export function ProviderDetailPage() {
     <QueryState isPending={provider.isPending} error={provider.error}>
       {provider.data && (
         <div className="stack">
+          <div className="row" style={{ marginBottom: -12 }}>
+            <Link className="link muted" to="/providers">
+              ← Providers
+            </Link>
+          </div>
+
           <PageHead
             title={provider.data.name}
             description={`${provider.data.displayName} · ${ownModels.length} models registered with the gateway`}
@@ -70,31 +76,39 @@ export function ProviderDetailPage() {
             <Notice kind="error">{provider.data.lastTestError}</Notice>
           )}
 
-          <section>
-            <h2>Configuration</h2>
-            <div className="card card-pad">
+          <Section title="Configuration">
+            <div className="card">
               {Object.entries(provider.data.config).length === 0 && (
-                <span className="muted">Provider defaults.</span>
+                <div className="card-pad muted">Provider defaults.</div>
               )}
-              {Object.entries(provider.data.config).map(([key, value]) => (
-                <div key={key} className="row" style={{ justifyContent: 'space-between', padding: '4px 0' }}>
+              {Object.entries(provider.data.config).map(([key, value], index) => (
+                <div
+                  key={key}
+                  className="row"
+                  style={{
+                    justifyContent: 'space-between',
+                    padding: '12px 20px',
+                    borderTop: index === 0 ? 'none' : '1px solid var(--gray-200)',
+                  }}
+                >
                   <span className="muted">{key}</span>
                   <span className="mono">{value}</span>
                 </div>
               ))}
-              <div className="hint">The credential lives in the secret store and cannot be read back.</div>
+              <div className="card-foot">The credential lives in the secret store and cannot be read back.</div>
             </div>
-          </section>
+          </Section>
 
-          <section>
-            <h2>Models</h2>
+          <Section title="Models">
             <Table head={['Public name', 'Upstream', 'State', '']}>
-              {ownModels.length === 0 && <Empty>No models yet. Add the first one below.</Empty>}
+              {ownModels.length === 0 && <Empty title="No models yet">Add the first one below.</Empty>}
               {ownModels.map((model) => (
                 <tr key={model.id}>
                   <td className="mono">{model.publicModelName}</td>
                   <td className="mono muted">{model.providerModelName}</td>
-                  <td>{model.enabled ? 'Live' : 'Disabled'}</td>
+                  <td>
+                    <Badge tone={model.enabled ? 'ok' : 'neutral'}>{model.enabled ? 'Live' : 'Disabled'}</Badge>
+                  </td>
                   <td className="num">
                     <button
                       type="button"
@@ -109,11 +123,18 @@ export function ProviderDetailPage() {
                 </tr>
               ))}
             </Table>
-          </section>
+          </Section>
 
-          <section>
-            <h2>Add a model</h2>
-            <form className="card card-pad" style={{ maxWidth: 560 }} onSubmit={addModel}>
+          <Section title="Add a model">
+            <FormCard
+              hint="Registered with the gateway immediately."
+              action={
+                <button type="submit" className="primary" disabled={createModel.isPending}>
+                  Add model
+                </button>
+              }
+              onSubmit={addModel}
+            >
               <Field
                 label="Public name"
                 hint="What developers type, e.g. gpt-5. Stays stable even if the deployment changes."
@@ -128,16 +149,12 @@ export function ProviderDetailPage() {
               </Field>
 
               {createModel.error && (
-                <div style={{ marginBottom: 14 }}>
+                <div style={{ marginBottom: 16 }}>
                   <Notice kind="error">{createModel.error.message}</Notice>
                 </div>
               )}
-
-              <button type="submit" className="primary" disabled={createModel.isPending}>
-                Add model
-              </button>
-            </form>
-          </section>
+            </FormCard>
+          </Section>
         </div>
       )}
     </QueryState>

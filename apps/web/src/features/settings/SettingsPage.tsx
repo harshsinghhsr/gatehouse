@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { useSession } from '../auth/queries';
-import { Dot, PageHead } from '../../shared/ui';
+import { Badge, Code, PageHead, Section, Status } from '../../shared/ui';
 import { useConnectInfo, useHealth } from '../usage/queries';
 
 export function SettingsPage() {
@@ -20,56 +20,59 @@ export function SettingsPage() {
       />
 
       <div className="grid grid-half">
-        <section>
-          <h2>Organization</h2>
-          <div className="card card-pad">
-            <Row label="Name">{organization?.name ?? '—'}</Row>
-            <Row label="Slug" mono>
-              {organization?.slug ?? '—'}
-            </Row>
-            <Row label="Your role">{session.data?.role.toLowerCase() ?? '—'}</Row>
-            <div className="hint">
-              The slug namespaces this organization&rsquo;s models inside the gateway, so two organizations
-              can both publish a model called gpt-5.
+        <Section title="Organization">
+          <div className="card">
+            <div className="card-pad" style={{ paddingBottom: 8 }}>
+              <Row label="Name">{organization?.name ?? '—'}</Row>
+              <Row label="Slug" mono>
+                {organization?.slug ?? '—'}
+              </Row>
+              <Row label="Your role">
+                <Badge tone="info">{session.data?.role.toLowerCase() ?? '—'}</Badge>
+              </Row>
+            </div>
+            <div className="card-foot">
+              The slug namespaces this organization&rsquo;s models inside the gateway, so two organizations can
+              both publish a model called gpt-5.
             </div>
           </div>
-        </section>
+        </Section>
 
-        <section>
-          <h2>Account</h2>
+        <Section title="Account">
           <div className="card card-pad">
             <Row label="Name">{session.data?.user.name ?? '—'}</Row>
             <Row label="Email" mono>
               {session.data?.user.email ?? '—'}
             </Row>
+            <Row label="Theme">
+              <span className="muted">Set from the toolbar</span>
+            </Row>
           </div>
-        </section>
+        </Section>
 
-        <section>
-          <h2>Services</h2>
-          <div className="card card-pad">
-            {Object.entries(health.data?.services ?? {}).map(([name, state]) => (
-              <div key={name} className="row" style={{ justifyContent: 'space-between', padding: '4px 0' }}>
-                <span>
-                  <Dot state={state === 'ok' ? 'ok' : 'down'} />
-                  {name}
-                </span>
-                <span className="mono muted">{state}</span>
+        <Section title="Services">
+          <div className="card">
+            {Object.entries(health.data?.services ?? {}).map(([name, state], index) => (
+              <div
+                key={name}
+                className="row"
+                style={{
+                  justifyContent: 'space-between',
+                  padding: '12px 20px',
+                  borderTop: index === 0 ? 'none' : '1px solid var(--gray-200)',
+                }}
+              >
+                <Status state={state === 'ok' ? 'ok' : 'down'}>{name}</Status>
+                <Badge tone={state === 'ok' ? 'ok' : 'error'}>{state}</Badge>
               </div>
             ))}
-            {!health.data && <span className="muted">Health unavailable.</span>}
+            {!health.data && <div className="card-pad muted">Health unavailable.</div>}
           </div>
-        </section>
+        </Section>
 
-        <section>
-          <h2>Gateway endpoint</h2>
-          <div className="card card-pad">
-            <pre>{connect.data?.openai.baseUrl ?? '—'}</pre>
-            <div className="hint">
-              This is the URL developers put in their SDK. Administrative routes are not exposed there.
-            </div>
-          </div>
-        </section>
+        <Section title="Gateway endpoint" description="What developers put in their SDK.">
+          <Code>{connect.data?.openai.baseUrl ?? '—'}</Code>
+        </Section>
       </div>
     </div>
   );
@@ -77,7 +80,7 @@ export function SettingsPage() {
 
 function Row({ label, mono, children }: { label: string; mono?: boolean; children: ReactNode }) {
   return (
-    <div className="row" style={{ justifyContent: 'space-between', padding: '5px 0' }}>
+    <div className="row" style={{ justifyContent: 'space-between', padding: '7px 0' }}>
       <span className="muted">{label}</span>
       <span className={mono ? 'mono' : undefined}>{children}</span>
     </div>

@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { BudgetRail, Empty, PageHead, QueryState, Table } from '../../shared/ui';
+import { Badge, BudgetRail, Empty, PageHead, QueryState, Table } from '../../shared/ui';
 import { useBudgets, useUsageByDeveloper } from './queries';
 
 export function BudgetsPage() {
@@ -17,7 +17,18 @@ export function BudgetsPage() {
 
       <QueryState isPending={budgets.isPending} error={budgets.error}>
         <Table head={['Holder', 'Period', 'Consumed', '>Rate limit']}>
-          {budgets.data?.length === 0 && <Empty>No budgets set. Open a developer to add one.</Empty>}
+          {budgets.data?.length === 0 && (
+            <Empty
+              title="No budgets set"
+              action={
+                <Link className="btn small" to="/developers">
+                  Open a developer
+                </Link>
+              }
+            >
+              Without a cap, a runaway loop bills whatever it can reach.
+            </Empty>
+          )}
           {budgets.data?.map((budget) => (
             <tr key={budget.id}>
               <td>
@@ -30,12 +41,11 @@ export function BudgetsPage() {
                   budget.holder.name
                 )}
               </td>
-              <td className="muted">{budget.period.toLowerCase()}</td>
+              <td>
+                <Badge>{budget.period.toLowerCase()}</Badge>
+              </td>
               <td style={{ width: '40%' }}>
-                <BudgetRail
-                  spend={spendByDeveloper.get(budget.holder.id) ?? 0}
-                  budget={budget.maxBudget}
-                />
+                <BudgetRail spend={spendByDeveloper.get(budget.holder.id) ?? 0} budget={budget.maxBudget} />
               </td>
               <td className="num">{budget.rpmLimit ? `${budget.rpmLimit}/min` : '—'}</td>
             </tr>

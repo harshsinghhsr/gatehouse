@@ -3,7 +3,7 @@ import { createDeveloperRequestSchema } from '@gatehouse/shared';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { Link } from 'react-router-dom';
-import { Dot, Empty, Field, Notice, PageHead, QueryState, Table } from '../../shared/ui';
+import { Badge, Empty, Field, FormCard, Notice, PageHead, QueryState, Status, Table } from '../../shared/ui';
 import { useCreateDeveloper, useDevelopers } from './queries';
 
 export function DevelopersPage() {
@@ -16,7 +16,7 @@ export function DevelopersPage() {
         title="Developers"
         description="Everyone who can hold a gateway key. Grant models and a budget on a developer, then issue the key."
         action={
-          <button type="button" className="primary" onClick={() => setAdding((open) => !open)}>
+          <button type="button" className={adding ? '' : 'primary'} onClick={() => setAdding((open) => !open)}>
             {adding ? 'Cancel' : 'Add developer'}
           </button>
         }
@@ -26,17 +26,31 @@ export function DevelopersPage() {
 
       <QueryState isPending={developers.isPending} error={developers.error}>
         <Table head={['Developer', 'Role', 'Status', '>Active keys']}>
-          {developers.data?.length === 0 && <Empty>No developers yet.</Empty>}
+          {developers.data?.length === 0 && (
+            <Empty
+              title="No developers yet"
+              action={
+                <button type="button" className="btn btn-primary small" onClick={() => setAdding(true)}>
+                  Add developer
+                </button>
+              }
+            >
+              A developer is anyone who should hold a key to the gateway.
+            </Empty>
+          )}
           {developers.data?.map((developer) => (
             <tr key={developer.id}>
               <td>
                 <Link to={`/developers/${developer.id}`}>{developer.name}</Link>
                 <div className="mono muted">{developer.email}</div>
               </td>
-              <td className="muted">{developer.role.toLowerCase()}</td>
               <td>
-                <Dot state={developer.status === 'ACTIVE' ? 'ok' : 'idle'} />
-                {developer.status === 'ACTIVE' ? 'Active' : 'Disabled'}
+                <Badge tone={developer.role === 'MEMBER' ? 'neutral' : 'info'}>{developer.role.toLowerCase()}</Badge>
+              </td>
+              <td>
+                <Status state={developer.status === 'ACTIVE' ? 'ok' : 'idle'}>
+                  {developer.status === 'ACTIVE' ? 'Active' : 'Disabled'}
+                </Status>
               </td>
               <td className="num">{developer.activeKeys}</td>
             </tr>
@@ -55,9 +69,13 @@ function AddDeveloperForm({ onDone }: { onDone: () => void }) {
   });
 
   return (
-    <form
-      className="card card-pad"
-      style={{ maxWidth: 560 }}
+    <FormCard
+      hint="They can hold keys straight away."
+      action={
+        <button type="submit" className="primary" disabled={createDeveloper.isPending}>
+          Add developer
+        </button>
+      }
       onSubmit={form.handleSubmit((values) =>
         createDeveloper.mutate(
           { ...values, password: values.password || undefined },
@@ -77,8 +95,8 @@ function AddDeveloperForm({ onDone }: { onDone: () => void }) {
         <input type="email" {...form.register('email')} />
       </Field>
       <Field
-        label="Password (optional)"
-        hint="Set one only if this person signs into the dashboard."
+        label="Password"
+        hint="Optional. Set one only if this person signs into the dashboard."
         error={form.formState.errors.password?.message}
       >
         <input type="password" autoComplete="new-password" {...form.register('password')} />
@@ -91,14 +109,10 @@ function AddDeveloperForm({ onDone }: { onDone: () => void }) {
       </Field>
 
       {createDeveloper.error && (
-        <div style={{ marginBottom: 14 }}>
+        <div style={{ marginBottom: 16 }}>
           <Notice kind="error">{createDeveloper.error.message}</Notice>
         </div>
       )}
-
-      <button type="submit" className="primary" disabled={createDeveloper.isPending}>
-        Add developer
-      </button>
-    </form>
+    </FormCard>
   );
 }
