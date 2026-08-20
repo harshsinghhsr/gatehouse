@@ -221,7 +221,7 @@ p { margin: 0; }
 .stack { display: flex; flex-direction: column; gap: 24px; }
 .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .grid { display: grid; gap: 16px; }
-.grid-stats { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+.grid-stats { grid-template-columns: repeat(auto-fit, minmax(164px, 1fr)); }
 .grid-half { grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); }
 .hint { font-size: 13px; color: var(--gray-600); }
 

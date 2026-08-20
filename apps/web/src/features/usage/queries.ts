@@ -57,7 +57,7 @@ export function useConnectInfo() {
 export function useHealth() {
   return useQuery({
     queryKey: queryKeys.health,
-    queryFn: () => api.get<HealthReport>('/ready'),
+    queryFn: () => api.get<HealthReport>('/api/ready'),
     // A degraded stack answers 503, which the client treats as an error; report it as data.
     retry: false,
     refetchInterval: 30_000,

@@ -53,7 +53,10 @@ export async function buildServer(container: AppContainer): Promise<FastifyInsta
 
   registerErrorHandler(app);
 
+  // Twice on purpose: container probes hit /health and /ready directly on the port, while the
+  // browser only ever sees /api, which is the single prefix the reverse proxy forwards.
   await app.register(healthController(container));
+  await app.register(healthController(container), { prefix: '/api' });
   for (const controller of [
     authController,
     organizationController,

@@ -4,11 +4,11 @@ import type { ErrorResponse } from '@gatehouse/shared';
  * The single place the browser talks to the API. Credentials are the session cookie, which is
  * httpOnly — no token is ever readable from JavaScript.
  *
- * The API is always same-origin under /api: nginx proxies it in production, the Vite dev server
- * proxies it in development. Nothing about the deployment is baked into the bundle, so the same
- * built image runs on localhost and on your domain.
+ * The API is always same-origin: every path below already starts with /api, which nginx forwards
+ * in production and the Vite dev server forwards in development — neither rewrites it. Nothing
+ * about the deployment is baked into the bundle, so one built image runs anywhere.
  */
-const BASE_URL = '/api';
+const BASE_URL = '';
 
 export class ApiError extends Error {
   constructor(

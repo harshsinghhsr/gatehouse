@@ -9,8 +9,8 @@ export default defineConfig({
   server: {
     port: 3000,
     strictPort: true,
-    // Mirrors the nginx rule in the production image, so /api behaves identically in both.
-    proxy: { '/api': { target: apiTarget, rewrite: (path) => path.replace(/^\/api/, '') } },
+    // Mirrors the nginx rule in the production image: forwarded as-is, never rewritten.
+    proxy: { '/api': { target: apiTarget } },
   },
   build: { outDir: 'dist', sourcemap: true },
 });

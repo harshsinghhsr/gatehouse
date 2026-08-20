@@ -75,12 +75,20 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   );
 
   if (!result.success) {
-    // Fail loudly at boot rather than at the first request that needs the missing value.
-    const problems = result.error.issues.map((i) => `  ${i.path.join('.')}: ${i.message}`).join('\n');
+    // Fail loudly at boot rather than at the first request that needs the missing value, and
+    // name the variable the operator actually sets — `SECRETS_BACKEND`, not `secretsBackend`.
+    const problems = result.error.issues
+      .map((issue) => `  ${envNameOf(String(issue.path[0]))}: ${issue.message}`)
+      .join('\n');
     throw new Error(`Invalid configuration:\n${problems}`);
   }
   assertProductionReady(result.data);
   return result.data;
+}
+
+/** Every schema key is the camelCase form of its variable, so the mapping is mechanical. */
+function envNameOf(key: string): string {
+  return key.replace(/[A-Z]/g, (letter) => `_${letter}`).toUpperCase();
 }
 
 /**
