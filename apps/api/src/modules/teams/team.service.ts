@@ -100,6 +100,8 @@ export class TeamService {
   ): Promise<void> {
     this.assertMayAppoint(context, role);
     await this.assertCanManage(context, teamId);
+    // The upsert overwrites an existing row's role, so demotion is a write like any other.
+    await this.assertMayTouchLead(context, teamId, userId, 'change');
     const team = await this.require(teamId);
     await this.access.requireUser(userId);
 
@@ -120,13 +122,9 @@ export class TeamService {
 
   async removeMember(context: AuthContext, teamId: string, userId: string): Promise<void> {
     await this.assertCanManage(context, teamId);
-    const team = await this.require(teamId);
-
     // A lead may not remove a peer lead, for the same reason they may not appoint one.
-    const target = await this.uow.repos.teams.findMember(team.id, userId);
-    if (target?.role === 'LEAD' && !isInstanceAdmin(context)) {
-      throw new ForbiddenError('Only an admin can remove a team lead');
-    }
+    await this.assertMayTouchLead(context, teamId, userId, 'remove');
+    const team = await this.require(teamId);
 
     await this.uow.repos.teams.removeMember(team.id, userId);
     await this.access.syncActiveKeys(userId);
@@ -180,6 +178,22 @@ export class TeamService {
     if (isInstanceAdmin(context)) return;
     const member = await this.uow.repos.teams.findMember(teamId, context.userId);
     if (member?.role !== 'LEAD') throw new ForbiddenError('You do not lead this team');
+  }
+
+  /**
+   * A lead's membership row is admin-only whichever way it is written. Without this, a lead
+   * could re-POST a peer lead as MEMBER — the upsert would demote them — and then remove them,
+   * defeating the appoint/remove rules in two calls.
+   */
+  private async assertMayTouchLead(
+    context: AuthContext,
+    teamId: string,
+    userId: string,
+    verb: 'change' | 'remove',
+  ): Promise<void> {
+    if (isInstanceAdmin(context)) return;
+    const target = await this.uow.repos.teams.findMember(teamId, userId);
+    if (target?.role === 'LEAD') throw new ForbiddenError(`Only an admin can ${verb} a team lead`);
   }
 
   /** Only an admin appoints a lead — otherwise a lead could mint peers without oversight. */
