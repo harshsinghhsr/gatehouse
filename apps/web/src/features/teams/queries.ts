@@ -1,4 +1,10 @@
-import type { CreateTeamRequest, SetModelAccessRequest, TeamDetail, TeamSummary } from '@gatehouse/shared';
+import type {
+  AddTeamMemberRequest,
+  CreateTeamRequest,
+  SetModelAccessRequest,
+  TeamDetail,
+  TeamSummary,
+} from '@gatehouse/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../shared/api/client';
 import { queryKeys } from '../../shared/api/query-keys';
@@ -37,8 +43,9 @@ export const useCreateTeam = () =>
 
 export const useDeleteTeam = () => useTeamMutation((id: string) => api.delete<void>(`/api/teams/${id}`));
 
+/** The POST upserts, so re-posting an existing member with a new role is how a role changes. */
 export const useAddTeamMember = (teamId: string) =>
-  useTeamMutation((userId: string) => api.post(`/api/teams/${teamId}/members`, { userId }), teamId);
+  useTeamMutation((body: AddTeamMemberRequest) => api.post(`/api/teams/${teamId}/members`, body), teamId);
 
 export const useRemoveTeamMember = (teamId: string) =>
   useTeamMutation((userId: string) => api.delete(`/api/teams/${teamId}/members/${userId}`), teamId);

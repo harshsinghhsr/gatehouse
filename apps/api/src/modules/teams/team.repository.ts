@@ -1,3 +1,4 @@
+import type { TeamRole } from '@gatehouse/shared';
 import type { Db } from '../../infra/db/client.js';
 import { onUniqueConflict } from '../../infra/db/conflicts.js';
 
@@ -8,17 +9,18 @@ export type Team = {
   litellmTeamId: string | null;
 };
 
-export type TeamMember = { id: string; name: string; email: string };
+export type TeamMember = { id: string; name: string; email: string; role: TeamRole };
 
 export interface TeamRepository {
   list(): Promise<Array<Team & { memberCount: number }>>;
   findById(id: string): Promise<Team | null>;
   listForUser(userId: string): Promise<Team[]>;
   listMembers(teamId: string): Promise<TeamMember[]>;
+  findMember(teamId: string, userId: string): Promise<{ userId: string; role: TeamRole } | null>;
   listMemberIds(teamId: string): Promise<string[]>;
   create(input: { name: string; slug: string; litellmTeamId: string | null }): Promise<Team>;
   delete(id: string): Promise<void>;
-  addMember(teamId: string, userId: string): Promise<void>;
+  addMember(teamId: string, userId: string, role: TeamRole): Promise<void>;
   removeMember(teamId: string, userId: string): Promise<void>;
 }
 
@@ -50,9 +52,16 @@ export class PrismaTeamRepository implements TeamRepository {
   async listMembers(teamId: string): Promise<TeamMember[]> {
     const rows = await this.db.teamMember.findMany({
       where: { teamId },
-      select: { user: { select: { id: true, name: true, email: true } } },
+      select: { role: true, user: { select: { id: true, name: true, email: true } } },
     });
-    return rows.map((row) => row.user);
+    return rows.map((row) => ({ ...row.user, role: row.role }));
+  }
+
+  findMember(teamId: string, userId: string): Promise<{ userId: string; role: TeamRole } | null> {
+    return this.db.teamMember.findUnique({
+      where: { teamId_userId: { teamId, userId } },
+      select: { userId: true, role: true },
+    });
   }
 
   async listMemberIds(teamId: string): Promise<string[]> {
@@ -71,11 +80,11 @@ export class PrismaTeamRepository implements TeamRepository {
     await this.db.team.delete({ where: { id } });
   }
 
-  async addMember(teamId: string, userId: string): Promise<void> {
+  async addMember(teamId: string, userId: string, role: TeamRole): Promise<void> {
     await this.db.teamMember.upsert({
       where: { teamId_userId: { teamId, userId } },
-      create: { teamId, userId },
-      update: {},
+      create: { teamId, userId, role },
+      update: { role },
     });
   }
 

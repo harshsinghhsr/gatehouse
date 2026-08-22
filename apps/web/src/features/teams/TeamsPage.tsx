@@ -1,5 +1,6 @@
 import { type FormEvent, useState } from 'react';
-import { Empty, FormCard, PageHead, QueryState, Section, Table } from '../../shared/ui';
+import { Badge, Empty, FormCard, PageHead, QueryState, Section, Table } from '../../shared/ui';
+import { useSession } from '../auth/queries';
 import { useDevelopers } from '../developers/queries';
 import { useModels } from '../models/queries';
 import {
@@ -89,6 +90,10 @@ function TeamEditor({ teamId }: { teamId: string }) {
   const developers = useDevelopers();
   const models = useModels();
 
+  const session = useSession();
+  // Matches the server rule: only an instance admin may appoint or remove a lead.
+  const mayAppointLead = session.data?.role === 'OWNER' || session.data?.role === 'ADMIN';
+
   const addMember = useAddTeamMember(teamId);
   const removeMember = useRemoveTeamMember(teamId);
   const setTeamModels = useSetTeamModels(teamId);
@@ -110,12 +115,29 @@ function TeamEditor({ teamId }: { teamId: string }) {
                     borderTop: index === 0 ? 'none' : '1px solid var(--gray-200)',
                   }}
                 >
-                  <span>
+                  <span className="row">
                     {member.name} <span className="mono muted">{member.email}</span>
+                    <Badge tone={member.role === 'LEAD' ? 'info' : 'neutral'}>{member.role}</Badge>
                   </span>
-                  <button type="button" className="small danger" onClick={() => removeMember.mutate(member.id)}>
-                    Remove
-                  </button>
+                  <div className="row">
+                    {mayAppointLead && (
+                      <button
+                        type="button"
+                        className="small"
+                        onClick={() =>
+                          addMember.mutate({
+                            userId: member.id,
+                            role: member.role === 'LEAD' ? 'MEMBER' : 'LEAD',
+                          })
+                        }
+                      >
+                        {member.role === 'LEAD' ? 'Remove lead' : 'Make lead'}
+                      </button>
+                    )}
+                    <button type="button" className="small danger" onClick={() => removeMember.mutate(member.id)}>
+                      Remove
+                    </button>
+                  </div>
                 </div>
               ))}
 
@@ -123,7 +145,10 @@ function TeamEditor({ teamId }: { teamId: string }) {
                 className="card-foot"
                 onSubmit={(event) => {
                   event.preventDefault();
-                  addMember.mutate(String(new FormData(event.currentTarget).get('userId')));
+                  addMember.mutate({
+                    userId: String(new FormData(event.currentTarget).get('userId')),
+                    role: 'MEMBER',
+                  });
                 }}
               >
                 <select name="userId" aria-label="Add member" style={{ flex: 1 }}>

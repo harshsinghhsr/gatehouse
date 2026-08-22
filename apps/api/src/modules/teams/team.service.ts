@@ -1,5 +1,5 @@
-import type { CreateTeamRequest, TeamDetail, TeamSummary } from '@gatehouse/shared';
-import { NotFoundError } from '../../core/errors.js';
+import type { CreateTeamRequest, TeamDetail, TeamRole, TeamSummary } from '@gatehouse/shared';
+import { ForbiddenError, NotFoundError } from '../../core/errors.js';
 import type { LlmGateway } from '../../core/gateway.js';
 import { slugify } from '../../core/slug.js';
 import type { UnitOfWork } from '../../core/unit-of-work.js';
@@ -7,6 +7,11 @@ import type { AuditService } from '../audit/audit.service.js';
 import type { AuthContext } from '../auth/authenticator.js';
 import type { AccessService } from '../developers/access.service.js';
 import type { UserService } from '../users/user.service.js';
+
+/** Instance-wide authority. OWNER and ADMIN manage every team; everyone else must lead it. */
+function isInstanceAdmin(context: AuthContext): boolean {
+  return context.role === 'OWNER' || context.role === 'ADMIN';
+}
 
 /**
  * Teams grant models to a group. Any change here can widen or narrow what a member may call,
@@ -87,11 +92,18 @@ export class TeamService {
     }
   }
 
-  async addMember(context: AuthContext, teamId: string, userId: string): Promise<void> {
+  async addMember(
+    context: AuthContext,
+    teamId: string,
+    userId: string,
+    role: TeamRole = 'MEMBER',
+  ): Promise<void> {
+    this.assertMayAppoint(context, role);
+    await this.assertCanManage(context, teamId);
     const team = await this.require(teamId);
     await this.access.requireUser(userId);
 
-    await this.uow.repos.teams.addMember(team.id, userId);
+    await this.uow.repos.teams.addMember(team.id, userId, role);
     if (team.litellmTeamId) {
       const gatewayUserId = await this.users.ensureGatewayUser(userId);
       await this.gateway.addTeamMember(team.litellmTeamId, gatewayUserId);
@@ -107,7 +119,14 @@ export class TeamService {
   }
 
   async removeMember(context: AuthContext, teamId: string, userId: string): Promise<void> {
+    await this.assertCanManage(context, teamId);
     const team = await this.require(teamId);
+
+    // A lead may not remove a peer lead, for the same reason they may not appoint one.
+    const target = await this.uow.repos.teams.findMember(team.id, userId);
+    if (target?.role === 'LEAD' && !isInstanceAdmin(context)) {
+      throw new ForbiddenError('Only an admin can remove a team lead');
+    }
 
     await this.uow.repos.teams.removeMember(team.id, userId);
     await this.access.syncActiveKeys(userId);
@@ -125,6 +144,7 @@ export class TeamService {
     teamId: string,
     modelIds: string[],
   ): Promise<Array<{ id: string; publicModelName: string }>> {
+    await this.assertCanManage(context, teamId);
     const team = await this.require(teamId);
     const models = await this.uow.repos.models.findMany(modelIds);
     if (models.length !== new Set(modelIds).size) throw new NotFoundError('Model');
@@ -150,6 +170,23 @@ export class TeamService {
       await this.access.syncActiveKeys(userId);
     }
     return models.map((model) => ({ id: model.id, publicModelName: model.publicModelName }));
+  }
+
+  /**
+   * Kept here rather than in a route guard: "does this caller lead this team" is a database
+   * read, and controllers do not branch on domain state.
+   */
+  private async assertCanManage(context: AuthContext, teamId: string): Promise<void> {
+    if (isInstanceAdmin(context)) return;
+    const member = await this.uow.repos.teams.findMember(teamId, context.userId);
+    if (member?.role !== 'LEAD') throw new ForbiddenError('You do not lead this team');
+  }
+
+  /** Only an admin appoints a lead — otherwise a lead could mint peers without oversight. */
+  private assertMayAppoint(context: AuthContext, role: TeamRole): void {
+    if (role === 'LEAD' && !isInstanceAdmin(context)) {
+      throw new ForbiddenError('Only an admin can appoint a team lead');
+    }
   }
 
   private async require(id: string) {

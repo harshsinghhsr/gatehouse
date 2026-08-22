@@ -34,20 +34,20 @@ export const teamController =
       return reply.code(204).send();
     });
 
-    app.post('/teams/:id/members', { preHandler: guards('ADMIN') }, async (request, reply) => {
+    app.post('/teams/:id/members', { preHandler: guards('MEMBER') }, async (request, reply) => {
       const { id } = parse(idParamSchema, request.params);
-      const { userId } = parse(addTeamMemberRequestSchema, request.body);
-      await services.teams.addMember(authOf(request), id, userId);
+      const { userId, role } = parse(addTeamMemberRequestSchema, request.body);
+      await services.teams.addMember(authOf(request), id, userId, role);
       return reply.code(201).send({ ok: true as const });
     });
 
-    app.delete('/teams/:id/members/:userId', { preHandler: guards('ADMIN') }, async (request, reply) => {
+    app.delete('/teams/:id/members/:userId', { preHandler: guards('MEMBER') }, async (request, reply) => {
       const { id, userId } = parse(memberParamsSchema, request.params);
       await services.teams.removeMember(authOf(request), id, userId);
       return reply.code(204).send();
     });
 
-    app.put('/teams/:id/models', { preHandler: guards('ADMIN') }, async (request) => {
+    app.put('/teams/:id/models', { preHandler: guards('MEMBER') }, async (request) => {
       const { id } = parse(idParamSchema, request.params);
       const { modelIds } = parse(setModelAccessRequestSchema, request.body);
       return { models: await services.teams.setModelAccess(authOf(request), id, modelIds) };
