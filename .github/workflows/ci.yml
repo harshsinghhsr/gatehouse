@@ -40,7 +40,7 @@ jobs:
 
       - name: Acceptance flow and AWS secret-store contract
         run: |
-          docker compose --profile aws up -d --wait localstack
+          docker compose --profile aws up -d --wait floci
           INTEGRATION=1 npm run -w apps/api test
 
       - name: Production images build

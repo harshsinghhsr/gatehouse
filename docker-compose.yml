@@ -44,17 +44,18 @@ services:
       retries: 30
       start_period: 60s
 
-  # AWS stand-in. Community edition covers Secrets Manager, the only AWS service this platform
-  # uses. Opt in with: docker compose --profile aws up -d localstack
-  localstack:
-    image: localstack/localstack:4
+  # AWS stand-in. LocalStack's community edition was archived in March 2026; floci is the
+  # MIT-licensed drop-in — same port, same endpoint, unchanged SDK calls.
+  # Opt in with: docker compose --profile aws up -d floci
+  floci:
+    image: floci/floci:1.5.11
     profiles: ["aws"]
     environment:
-      SERVICES: secretsmanager
-      DEBUG: "0"
+      # In-memory: a test run should never inherit secrets from the previous one.
+      FLOCI_STORAGE_MODE: memory
     ports: ["4566:4566"]
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:4566/_localstack/health | grep -q '\"secretsmanager\": \"available\"'"]
+      test: ["CMD-SHELL", "curl -sf http://localhost:4566/_localstack/health"]
       interval: 5s
       timeout: 5s
       retries: 30

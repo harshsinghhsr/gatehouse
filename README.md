@@ -217,11 +217,11 @@ this workable.
 ### Testing the AWS path without AWS
 
 Provider credentials can live in AWS Secrets Manager. To exercise that code path locally, run
-[LocalStack](https://github.com/localstack/localstack) — the community edition covers Secrets
+[floci](https://github.com/floci/floci) — the MIT-licensed AWS stand-in that covers Secrets
 Manager, the only AWS service this needs:
 
 ```bash
-docker compose --profile aws up -d localstack
+docker compose --profile aws up -d floci
 INTEGRATION=1 npm run -w apps/api test
 ```
 

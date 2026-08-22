@@ -3,7 +3,7 @@
 Status: phases 1-7 and 9 implemented, then rebuilt onto a layered architecture (controllers →
 services → repositories, dependency injection through a composition root, a shared contract
 package, and TanStack Query on a Vite/React frontend). Phase 8 (AWS deployment) is not built,
-but the AWS Secrets Manager path is exercised locally against LocalStack. Findings from the build are folded back into the sections below;
+but the AWS Secrets Manager path is exercised locally against floci. Findings from the build are folded back into the sections below;
 `docs/litellm-notes.md` and `docs/security.md` carry the details.
 
 ---

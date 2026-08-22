@@ -52,7 +52,7 @@ on a developer, a revoked key failing at the gateway, and a non-granted model be
 - **The default secret store is a plaintext 0600 file** on a Docker volume, so provider
   credentials are only as private as the host. It is the default because it makes a single-node
   deployment work with no cloud account. `SECRETS_BACKEND=aws` moves them into Secrets Manager;
-  the same `AwsSecretStore` runs against LocalStack locally, so that path is tested, not theoretical.
+  the same `AwsSecretStore` runs against floci locally, so that path is tested, not theoretical.
 - **Registration bootstrap has a theoretical race.** Two simultaneous first requests could both pass
   the "no users yet" check. The window is one request wide on an empty database.
 - **`/ready` is unauthenticated** and names which dependency is down. Standard for a health probe.

@@ -12,7 +12,7 @@ try {
   // No .env — the compose defaults below apply.
 }
 
-const CONTAINER_HOSTS = ['postgres', 'redis', 'litellm', 'localstack'];
+const CONTAINER_HOSTS = ['postgres', 'redis', 'litellm', 'floci'];
 
 /**
  * .env describes the container network. From the host, every service is published on localhost.

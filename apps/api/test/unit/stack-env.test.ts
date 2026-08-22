@@ -13,7 +13,7 @@ describe('hostUrl', () => {
 
   test('rewrites the other service hostnames', () => {
     assert.equal(hostUrl('http://litellm:4000'), 'http://localhost:4000', 'no trailing slash to double up');
-    assert.equal(hostUrl('http://localstack:4566'), 'http://localhost:4566');
+    assert.equal(hostUrl('http://floci:4566'), 'http://localhost:4566');
     assert.equal(hostUrl('redis://redis:6379'), 'redis://localhost:6379');
   });
 
