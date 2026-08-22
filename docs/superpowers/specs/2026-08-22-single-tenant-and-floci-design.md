@@ -129,6 +129,9 @@ key returns instance-wide data rather than an empty set. The acceptance test ass
 does not hold, the fallback is to keep a single LiteLLM-side organization purely as a spend
 rollup bucket, invisible to our schema and our API.
 
+Verified against LiteLLM v1.97.0 on 2026-08-22: an unfiltered call under the master key returns
+instance-wide results.
+
 ### Team leads
 
 `TeamMember.role` distinguishes a `LEAD` from a `MEMBER`. A lead manages their own team's
