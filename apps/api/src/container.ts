@@ -21,10 +21,10 @@ import { AccessService } from './modules/developers/access.service.js';
 import { DeveloperService } from './modules/developers/developer.service.js';
 import { KeyService } from './modules/developers/key.service.js';
 import { ModelService } from './modules/models/model.service.js';
-import { OrganizationService } from './modules/organizations/organization.service.js';
 import { ProviderService } from './modules/providers/provider.service.js';
 import { TeamService } from './modules/teams/team.service.js';
 import { UsageService } from './modules/usage/usage.service.js';
+import { UserService } from './modules/users/user.service.js';
 
 /**
  * Composition root. Every dependency is constructed exactly once, here, and injected downward.
@@ -33,7 +33,7 @@ import { UsageService } from './modules/usage/usage.service.js';
  */
 export type Services = {
   auth: AuthService;
-  organizations: OrganizationService;
+  users: UserService;
   providers: ProviderService;
   models: ModelService;
   developers: DeveloperService;
@@ -84,20 +84,20 @@ export function createContainer(
     });
 
   const audit = new AuditService(uow);
-  const organizations = new OrganizationService(uow, gateway, sessions);
-  const access = new AccessService(uow, gateway, organizations);
+  const users = new UserService(uow, gateway);
+  const access = new AccessService(uow, gateway, users);
   const keys = new KeyService(uow, gateway, access, audit, clock);
 
   const services: Services = {
     audit,
-    organizations,
+    users,
     keys,
     auth: new AuthService(uow, sessions, hasher, audit, config),
     providers: new ProviderService(uow, gateway, secrets, audit, asLogger(logger), config),
     models: new ModelService(uow, gateway, audit),
     developers: new DeveloperService(uow, gateway, access, keys, hasher, audit),
-    teams: new TeamService(uow, gateway, organizations, access, audit),
-    usage: new UsageService(uow, gateway, organizations, cache, config),
+    teams: new TeamService(uow, gateway, users, access, audit),
+    usage: new UsageService(uow, gateway, cache, config),
   };
 
   return {

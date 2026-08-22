@@ -16,9 +16,7 @@ const memberParamsSchema = z.object({ id: uuidSchema, userId: uuidSchema });
 export const teamController =
   ({ services, guards }: AppContainer): FastifyPluginAsync =>
   async (app) => {
-    app.get('/teams', { preHandler: guards('MEMBER') }, async (request) =>
-      services.teams.list(authOf(request).organizationId),
-    );
+    app.get('/teams', { preHandler: guards('MEMBER') }, async () => services.teams.list());
 
     app.post('/teams', { preHandler: guards('ADMIN') }, async (request, reply) => {
       const body = parse(createTeamRequestSchema, request.body);
@@ -27,7 +25,7 @@ export const teamController =
 
     app.get('/teams/:id', { preHandler: guards('MEMBER') }, async (request) => {
       const { id } = parse(idParamSchema, request.params);
-      return services.teams.get(authOf(request).organizationId, id);
+      return services.teams.get(id);
     });
 
     app.delete('/teams/:id', { preHandler: guards('ADMIN') }, async (request, reply) => {

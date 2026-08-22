@@ -14,7 +14,7 @@ declare module 'fastify' {
 
 /**
  * Route guards. A route declares the minimum role it needs and receives an AuthContext whose
- * organizationId came from the session — request bodies never influence tenancy.
+ * identity and role came from the session — request bodies never influence authorization.
  */
 export function createGuards(authenticator: Authenticator) {
   return function requireRole(minimum: Role = 'MEMBER'): preHandlerAsyncHookHandler {

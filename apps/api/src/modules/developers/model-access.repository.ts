@@ -9,11 +9,11 @@ export type GrantedModel = {
 
 export interface ModelAccessRepository {
   /** Union of the developer's own grants and those of every team they belong to. */
-  listEffectiveForUser(organizationId: string, userId: string): Promise<GrantedModel[]>;
-  listForUser(organizationId: string, userId: string): Promise<GrantedModel[]>;
-  listForTeam(organizationId: string, teamId: string): Promise<GrantedModel[]>;
-  replaceForUser(organizationId: string, userId: string, providerModelIds: string[]): Promise<void>;
-  replaceForTeam(organizationId: string, teamId: string, providerModelIds: string[]): Promise<void>;
+  listEffectiveForUser(userId: string): Promise<GrantedModel[]>;
+  listForUser(userId: string): Promise<GrantedModel[]>;
+  listForTeam(teamId: string): Promise<GrantedModel[]>;
+  replaceForUser(userId: string, providerModelIds: string[]): Promise<void>;
+  replaceForTeam(teamId: string, providerModelIds: string[]): Promise<void>;
 }
 
 const GRANT_SELECT = {
@@ -38,15 +38,14 @@ const SERVING = { enabled: true, provider: { status: 'ACTIVE' as const } };
 export class PrismaModelAccessRepository implements ModelAccessRepository {
   constructor(private readonly db: Db) {}
 
-  async listEffectiveForUser(organizationId: string, userId: string): Promise<GrantedModel[]> {
+  async listEffectiveForUser(userId: string): Promise<GrantedModel[]> {
     const teams = await this.db.teamMember.findMany({
-      where: { userId, team: { organizationId } },
+      where: { userId },
       select: { teamId: true },
     });
 
     const rows = await this.db.modelAccess.findMany({
       where: {
-        organizationId,
         OR: [{ userId }, { teamId: { in: teams.map((t) => t.teamId) } }],
         providerModel: SERVING,
       },
@@ -57,33 +56,33 @@ export class PrismaModelAccessRepository implements ModelAccessRepository {
     return [...unique.values()];
   }
 
-  async listForUser(organizationId: string, userId: string): Promise<GrantedModel[]> {
+  async listForUser(userId: string): Promise<GrantedModel[]> {
     const rows = await this.db.modelAccess.findMany({
-      where: { organizationId, userId },
+      where: { userId },
       select: GRANT_SELECT,
     });
     return rows.map(toDomain);
   }
 
-  async listForTeam(organizationId: string, teamId: string): Promise<GrantedModel[]> {
+  async listForTeam(teamId: string): Promise<GrantedModel[]> {
     const rows = await this.db.modelAccess.findMany({
-      where: { organizationId, teamId },
+      where: { teamId },
       select: GRANT_SELECT,
     });
     return rows.map(toDomain);
   }
 
-  async replaceForUser(organizationId: string, userId: string, providerModelIds: string[]): Promise<void> {
-    await this.db.modelAccess.deleteMany({ where: { organizationId, userId } });
+  async replaceForUser(userId: string, providerModelIds: string[]): Promise<void> {
+    await this.db.modelAccess.deleteMany({ where: { userId } });
     await this.db.modelAccess.createMany({
-      data: providerModelIds.map((providerModelId) => ({ organizationId, userId, providerModelId })),
+      data: providerModelIds.map((providerModelId) => ({ userId, providerModelId })),
     });
   }
 
-  async replaceForTeam(organizationId: string, teamId: string, providerModelIds: string[]): Promise<void> {
-    await this.db.modelAccess.deleteMany({ where: { organizationId, teamId } });
+  async replaceForTeam(teamId: string, providerModelIds: string[]): Promise<void> {
+    await this.db.modelAccess.deleteMany({ where: { teamId } });
     await this.db.modelAccess.createMany({
-      data: providerModelIds.map((providerModelId) => ({ organizationId, teamId, providerModelId })),
+      data: providerModelIds.map((providerModelId) => ({ teamId, providerModelId })),
     });
   }
 }

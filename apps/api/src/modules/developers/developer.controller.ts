@@ -16,9 +16,7 @@ const keyParamsSchema = z.object({ id: uuidSchema, keyId: uuidSchema });
 export const developerController =
   ({ services, guards }: AppContainer): FastifyPluginAsync =>
   async (app) => {
-    app.get('/developers', { preHandler: guards('ADMIN') }, async (request) =>
-      services.developers.list(authOf(request).organizationId),
-    );
+    app.get('/developers', { preHandler: guards('ADMIN') }, async () => services.developers.list());
 
     app.post('/developers', { preHandler: guards('ADMIN') }, async (request, reply) => {
       const body = parse(createDeveloperRequestSchema, request.body);
@@ -27,7 +25,7 @@ export const developerController =
 
     app.get('/developers/:id', { preHandler: guards('ADMIN') }, async (request) => {
       const { id } = parse(idParamSchema, request.params);
-      return services.developers.get(authOf(request).organizationId, id);
+      return services.developers.get(id);
     });
 
     app.patch('/developers/:id', { preHandler: guards('ADMIN') }, async (request) => {

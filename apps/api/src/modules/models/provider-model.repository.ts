@@ -8,7 +8,7 @@ export type ProviderModel = {
   publicModelName: string;
   /** What the provider calls it: an Azure deployment name, or the vendor's model id. */
   providerModelName: string;
-  /** Globally unique inside the gateway: "{orgSlug}/{publicModelName}". */
+  /** Globally unique inside the gateway: "{providerSlug}/{publicModelName}". */
   gatewayModelName: string;
   litellmModelId: string | null;
   enabled: boolean;
@@ -16,11 +16,11 @@ export type ProviderModel = {
 };
 
 export interface ProviderModelRepository {
-  listByOrganization(organizationId: string): Promise<ProviderModel[]>;
+  list(): Promise<ProviderModel[]>;
   listByProvider(providerId: string): Promise<ProviderModel[]>;
-  findInOrganization(id: string, organizationId: string): Promise<ProviderModel | null>;
-  findManyInOrganization(ids: string[], organizationId: string): Promise<ProviderModel[]>;
-  countEnabled(organizationId: string): Promise<number>;
+  findById(id: string): Promise<ProviderModel | null>;
+  findMany(ids: string[]): Promise<ProviderModel[]>;
+  countEnabled(): Promise<number>;
   create(input: {
     providerId: string;
     publicModelName: string;
@@ -52,9 +52,8 @@ const toDomain = ({ litellmModelName, ...row }: Row): ProviderModel => ({
 export class PrismaProviderModelRepository implements ProviderModelRepository {
   constructor(private readonly db: Db) {}
 
-  async listByOrganization(organizationId: string): Promise<ProviderModel[]> {
+  async list(): Promise<ProviderModel[]> {
     const rows = await this.db.providerModel.findMany({
-      where: { provider: { organizationId } },
       select: SELECT,
       orderBy: { publicModelName: 'asc' },
     });
@@ -70,24 +69,18 @@ export class PrismaProviderModelRepository implements ProviderModelRepository {
     return rows.map(toDomain);
   }
 
-  async findInOrganization(id: string, organizationId: string): Promise<ProviderModel | null> {
-    const row = await this.db.providerModel.findFirst({
-      where: { id, provider: { organizationId } },
-      select: SELECT,
-    });
+  async findById(id: string): Promise<ProviderModel | null> {
+    const row = await this.db.providerModel.findUnique({ where: { id }, select: SELECT });
     return row ? toDomain(row) : null;
   }
 
-  async findManyInOrganization(ids: string[], organizationId: string): Promise<ProviderModel[]> {
-    const rows = await this.db.providerModel.findMany({
-      where: { id: { in: ids }, provider: { organizationId } },
-      select: SELECT,
-    });
+  async findMany(ids: string[]): Promise<ProviderModel[]> {
+    const rows = await this.db.providerModel.findMany({ where: { id: { in: ids } }, select: SELECT });
     return rows.map(toDomain);
   }
 
-  countEnabled(organizationId: string): Promise<number> {
-    return this.db.providerModel.count({ where: { provider: { organizationId }, enabled: true } });
+  countEnabled(): Promise<number> {
+    return this.db.providerModel.count({ where: { enabled: true } });
   }
 
   async create(input: {

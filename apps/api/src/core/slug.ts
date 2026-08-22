@@ -10,5 +10,5 @@ export function slugify(value: string): string {
     .replace(/^-+|-+$/g, '')
     .slice(0, 40)
     .replace(/-+$/g, '');
-  return slug || 'org';
+  return slug || 'unnamed';
 }

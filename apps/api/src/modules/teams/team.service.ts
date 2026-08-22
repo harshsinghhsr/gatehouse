@@ -1,12 +1,12 @@
 import type { CreateTeamRequest, TeamDetail, TeamSummary } from '@gatehouse/shared';
 import { NotFoundError } from '../../core/errors.js';
 import type { LlmGateway } from '../../core/gateway.js';
+import { slugify } from '../../core/slug.js';
 import type { UnitOfWork } from '../../core/unit-of-work.js';
 import type { AuditService } from '../audit/audit.service.js';
 import type { AuthContext } from '../auth/authenticator.js';
 import type { AccessService } from '../developers/access.service.js';
-import type { OrganizationService } from '../organizations/organization.service.js';
-import { slugify } from '../organizations/slug.js';
+import type { UserService } from '../users/user.service.js';
 
 /**
  * Teams grant models to a group. Any change here can widen or narrow what a member may call,
@@ -16,13 +16,13 @@ export class TeamService {
   constructor(
     private readonly uow: UnitOfWork,
     private readonly gateway: LlmGateway,
-    private readonly organizations: OrganizationService,
+    private readonly users: UserService,
     private readonly access: AccessService,
     private readonly audit: AuditService,
   ) {}
 
-  async list(organizationId: string): Promise<TeamSummary[]> {
-    const teams = await this.uow.repos.teams.listByOrganization(organizationId);
+  async list(): Promise<TeamSummary[]> {
+    const teams = await this.uow.repos.teams.list();
     return teams.map((team) => ({
       id: team.id,
       name: team.name,
@@ -31,11 +31,11 @@ export class TeamService {
     }));
   }
 
-  async get(organizationId: string, id: string): Promise<TeamDetail> {
-    const team = await this.require(organizationId, id);
+  async get(id: string): Promise<TeamDetail> {
+    const team = await this.require(id);
     const [members, grants] = await Promise.all([
       this.uow.repos.teams.listMembers(team.id),
-      this.uow.repos.modelAccess.listForTeam(organizationId, team.id),
+      this.uow.repos.modelAccess.listForTeam(team.id),
     ]);
 
     return {
@@ -49,12 +49,10 @@ export class TeamService {
   }
 
   async create(context: AuthContext, request: CreateTeamRequest): Promise<TeamSummary> {
-    const gatewayOrgId = await this.organizations.ensureGatewayOrganization(context.organizationId);
-    const gatewayTeamId = await this.gateway.createTeam(request.name, gatewayOrgId);
+    const gatewayTeamId = await this.gateway.createTeam(request.name);
 
     const team = await this.uow.transaction(async (repos) => {
       const created = await repos.teams.create({
-        organizationId: context.organizationId,
         name: request.name,
         slug: slugify(request.name),
         litellmTeamId: gatewayTeamId,
@@ -71,7 +69,7 @@ export class TeamService {
   }
 
   async delete(context: AuthContext, id: string): Promise<void> {
-    const team = await this.require(context.organizationId, id);
+    const team = await this.require(id);
     const memberIds = await this.uow.repos.teams.listMemberIds(team.id);
 
     await this.uow.transaction(async (repos) => {
@@ -85,20 +83,20 @@ export class TeamService {
 
     // Members may have just lost model access along with the team.
     for (const userId of memberIds) {
-      await this.access.syncActiveKeys(context.organizationId, userId);
+      await this.access.syncActiveKeys(userId);
     }
   }
 
   async addMember(context: AuthContext, teamId: string, userId: string): Promise<void> {
-    const team = await this.require(context.organizationId, teamId);
-    await this.access.requireMembership(context.organizationId, userId);
+    const team = await this.require(teamId);
+    await this.access.requireUser(userId);
 
     await this.uow.repos.teams.addMember(team.id, userId);
     if (team.litellmTeamId) {
-      const gatewayUserId = await this.organizations.ensureGatewayUser(context.organizationId, userId);
+      const gatewayUserId = await this.users.ensureGatewayUser(userId);
       await this.gateway.addTeamMember(team.litellmTeamId, gatewayUserId);
     }
-    await this.access.syncActiveKeys(context.organizationId, userId);
+    await this.access.syncActiveKeys(userId);
 
     await this.audit.record(context, {
       action: 'TEAM_MEMBER_ADDED',
@@ -109,10 +107,10 @@ export class TeamService {
   }
 
   async removeMember(context: AuthContext, teamId: string, userId: string): Promise<void> {
-    const team = await this.require(context.organizationId, teamId);
+    const team = await this.require(teamId);
 
     await this.uow.repos.teams.removeMember(team.id, userId);
-    await this.access.syncActiveKeys(context.organizationId, userId);
+    await this.access.syncActiveKeys(userId);
 
     await this.audit.record(context, {
       action: 'TEAM_MEMBER_REMOVED',
@@ -127,13 +125,12 @@ export class TeamService {
     teamId: string,
     modelIds: string[],
   ): Promise<Array<{ id: string; publicModelName: string }>> {
-    const team = await this.require(context.organizationId, teamId);
-    const models = await this.uow.repos.models.findManyInOrganization(modelIds, context.organizationId);
+    const team = await this.require(teamId);
+    const models = await this.uow.repos.models.findMany(modelIds);
     if (models.length !== new Set(modelIds).size) throw new NotFoundError('Model');
 
     await this.uow.transaction(async (repos) => {
       await repos.modelAccess.replaceForTeam(
-        context.organizationId,
         team.id,
         models.map((model) => model.id),
       );
@@ -150,13 +147,13 @@ export class TeamService {
     });
 
     for (const userId of await this.uow.repos.teams.listMemberIds(team.id)) {
-      await this.access.syncActiveKeys(context.organizationId, userId);
+      await this.access.syncActiveKeys(userId);
     }
     return models.map((model) => ({ id: model.id, publicModelName: model.publicModelName }));
   }
 
-  private async require(organizationId: string, id: string) {
-    const team = await this.uow.repos.teams.findInOrganization(id, organizationId);
+  private async require(id: string) {
+    const team = await this.uow.repos.teams.findById(id);
     if (!team) throw new NotFoundError('Team');
     return team;
   }

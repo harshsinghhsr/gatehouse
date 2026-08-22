@@ -24,31 +24,31 @@ export class DeveloperService {
     private readonly audit: AuditService,
   ) {}
 
-  async list(organizationId: string): Promise<DeveloperSummary[]> {
-    const [memberships, activeKeys] = await Promise.all([
-      this.uow.repos.memberships.listByOrganization(organizationId),
-      this.uow.repos.keys.countActiveByUser(organizationId),
+  async list(): Promise<DeveloperSummary[]> {
+    const [users, activeKeys] = await Promise.all([
+      this.uow.repos.users.list(),
+      this.uow.repos.keys.countActiveByUser(),
     ]);
 
-    return memberships.map((membership) => ({
-      id: membership.user.id,
-      email: membership.user.email,
-      name: membership.user.name,
-      status: membership.user.status,
-      role: membership.role,
-      activeKeys: activeKeys.get(membership.user.id) ?? 0,
+    return users.map((user) => ({
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      status: user.status,
+      role: user.role,
+      activeKeys: activeKeys.get(user.id) ?? 0,
     }));
   }
 
-  async get(organizationId: string, userId: string): Promise<DeveloperDetail> {
-    const membership = await this.access.requireMembership(organizationId, userId);
+  async get(userId: string): Promise<DeveloperDetail> {
+    const user = await this.access.requireUser(userId);
 
     const [grants, budget, keys, teams, activeKeys] = await Promise.all([
-      this.uow.repos.modelAccess.listEffectiveForUser(organizationId, userId),
-      this.uow.repos.budgets.findForUser(organizationId, userId),
-      this.uow.repos.keys.listForUser(organizationId, userId),
-      this.uow.repos.teams.listForUser(organizationId, userId),
-      this.uow.repos.keys.listActiveForUser(organizationId, userId),
+      this.uow.repos.modelAccess.listEffectiveForUser(userId),
+      this.uow.repos.budgets.findForUser(userId),
+      this.uow.repos.keys.listForUser(userId),
+      this.uow.repos.teams.listForUser(userId),
+      this.uow.repos.keys.listActiveForUser(userId),
     ]);
 
     // Spend is the gateway's figure. A failure to read it must not fail the page.
@@ -58,11 +58,11 @@ export class DeveloperService {
       : null;
 
     return {
-      id: membership.user.id,
-      email: membership.user.email,
-      name: membership.user.name,
-      status: membership.user.status,
-      role: membership.role,
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      status: user.status,
+      role: user.role,
       activeKeys: activeKeys.length,
       models: grants.map((grant) => ({ id: grant.providerModelId, publicModelName: grant.publicModelName })),
       budget: budget
@@ -89,23 +89,18 @@ export class DeveloperService {
   async create(context: AuthContext, request: CreateDeveloperRequest): Promise<DeveloperSummary> {
     const passwordHash = request.password ? await this.hasher.hash(request.password) : null;
 
+    if (await this.uow.repos.users.emailExists(request.email)) {
+      throw new ConflictError('A developer with this email already exists');
+    }
+
     return this.uow.transaction(async (repos) => {
-      // An account may already exist from another organization; membership is what is new.
-      const user = await repos.users.findOrCreateByEmail({
+      const user = await repos.users.create({
         email: request.email,
         name: request.name,
         passwordHash,
-      });
-
-      if (await repos.memberships.find(context.organizationId, user.id)) {
-        throw new ConflictError('This person is already in the organization');
-      }
-
-      await repos.memberships.create({
-        organizationId: context.organizationId,
-        userId: user.id,
         role: request.role,
       });
+
       await this.audit.record(
         context,
         {
@@ -117,12 +112,12 @@ export class DeveloperService {
         repos,
       );
 
-      return { ...user, role: request.role, activeKeys: 0 };
+      return { ...user, activeKeys: 0 };
     });
   }
 
   async update(context: AuthContext, userId: string, request: UpdateDeveloperRequest): Promise<void> {
-    const membership = await this.access.requireMembership(context.organizationId, userId);
+    await this.access.requireUser(userId);
     if (request.role && context.role !== 'OWNER') {
       throw new ForbiddenError('Only an owner can change roles');
     }
@@ -130,7 +125,7 @@ export class DeveloperService {
     if (request.status) {
       await this.uow.repos.users.setStatus(userId, request.status);
       // A disabled developer loses gateway access now, not at the next rotation.
-      if (request.status === 'DISABLED') await this.keys.revokeAllForUser(context, userId);
+      if (request.status === 'DISABLED') await this.keys.revokeAllForUser(userId);
       await this.audit.record(context, {
         action: request.status === 'DISABLED' ? 'USER_DISABLED' : 'USER_UPDATED',
         targetType: 'user',
@@ -140,7 +135,7 @@ export class DeveloperService {
     }
 
     if (request.role) {
-      await this.uow.repos.memberships.setRole(membership.id, request.role);
+      await this.uow.repos.users.setRole(userId, request.role);
       await this.audit.record(context, {
         action: 'USER_UPDATED',
         targetType: 'user',
@@ -150,14 +145,14 @@ export class DeveloperService {
     }
 
     if (request.budget) {
-      await this.uow.repos.budgets.upsertForUser(context.organizationId, userId, {
+      await this.uow.repos.budgets.upsertForUser(userId, {
         maxBudget: request.budget.maxBudget,
         period: request.budget.period,
         rpmLimit: request.budget.rpmLimit ?? null,
         tpmLimit: request.budget.tpmLimit ?? null,
       });
       // The gateway enforces budgets, so live keys have to learn the new ceiling.
-      await this.access.syncActiveKeys(context.organizationId, userId);
+      await this.access.syncActiveKeys(userId);
       await this.audit.record(context, {
         action: 'BUDGET_UPDATED',
         targetType: 'user',
@@ -167,13 +162,17 @@ export class DeveloperService {
     }
   }
 
+  /**
+   * Deletes the account outright. The cascade takes its keys, budgets, model access, and team
+   * memberships with it, so the gateway-side keys are revoked first rather than orphaned.
+   */
   async remove(context: AuthContext, userId: string): Promise<void> {
     if (userId === context.userId) throw new ValidationError('You cannot remove yourself');
-    const membership = await this.access.requireMembership(context.organizationId, userId);
+    await this.access.requireUser(userId);
 
-    const revoked = await this.keys.revokeAllForUser(context, userId);
+    const revoked = await this.keys.revokeAllForUser(userId);
     await this.uow.transaction(async (repos) => {
-      await repos.memberships.delete(membership.id);
+      await repos.users.delete(userId);
       await this.audit.record(
         context,
         {
@@ -193,17 +192,13 @@ export class DeveloperService {
     userId: string,
     request: SetModelAccessRequest,
   ): Promise<Array<{ id: string; publicModelName: string }>> {
-    await this.access.requireMembership(context.organizationId, userId);
+    await this.access.requireUser(userId);
 
-    const models = await this.uow.repos.models.findManyInOrganization(
-      request.modelIds,
-      context.organizationId,
-    );
+    const models = await this.uow.repos.models.findMany(request.modelIds);
     if (models.length !== new Set(request.modelIds).size) throw new NotFoundError('Model');
 
     await this.uow.transaction(async (repos) => {
       await repos.modelAccess.replaceForUser(
-        context.organizationId,
         userId,
         models.map((model) => model.id),
       );
@@ -219,7 +214,7 @@ export class DeveloperService {
       );
     });
 
-    await this.access.syncActiveKeys(context.organizationId, userId);
+    await this.access.syncActiveKeys(userId);
     return models.map((model) => ({ id: model.id, publicModelName: model.publicModelName }));
   }
 }

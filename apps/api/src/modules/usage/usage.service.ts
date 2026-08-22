@@ -7,10 +7,9 @@ import type {
   UsageTotals,
 } from '@gatehouse/shared';
 import type { Config } from '../../core/config.js';
-import type { LlmGateway, UsageReport } from '../../core/gateway.js';
+import type { LlmGateway } from '../../core/gateway.js';
 import type { CacheStore } from '../../core/ports.js';
 import type { UnitOfWork } from '../../core/unit-of-work.js';
-import type { OrganizationService } from '../organizations/organization.service.js';
 
 /**
  * Reporting. Every figure comes from the gateway, which priced each request when it served it;
@@ -22,18 +21,17 @@ export class UsageService {
   constructor(
     private readonly uow: UnitOfWork,
     private readonly gateway: LlmGateway,
-    private readonly organizations: OrganizationService,
     private readonly cache: CacheStore,
     private readonly config: Pick<Config, 'gatewayPublicUrl'>,
   ) {}
 
-  async totals(organizationId: string, range: DateRange): Promise<UsageTotals> {
+  async totals(range: DateRange): Promise<UsageTotals> {
     const { from, to } = resolveRange(range);
-    return this.cached(`usage:totals:${organizationId}:${from}:${to}`, async () => {
-      const report = await this.organizationReport(organizationId, from, to);
+    return this.cached(`usage:totals:${from}:${to}`, async () => {
+      const report = await this.gateway.instanceUsage(from, to);
       const [activeDevelopers, activeModels] = await Promise.all([
-        this.uow.repos.memberships.countByOrganization(organizationId),
-        this.uow.repos.models.countEnabled(organizationId),
+        this.uow.repos.users.countAll(),
+        this.uow.repos.models.countEnabled(),
       ]);
 
       return {
@@ -50,12 +48,12 @@ export class UsageService {
   }
 
   /** Gateway model names are namespaced; the dashboard shows the name developers actually use. */
-  async byModel(organizationId: string, range: DateRange): Promise<UsageBreakdownRow[]> {
+  async byModel(range: DateRange): Promise<UsageBreakdownRow[]> {
     const { from, to } = resolveRange(range);
-    return this.cached(`usage:models:${organizationId}:${from}:${to}`, async () => {
+    return this.cached(`usage:models:${from}:${to}`, async () => {
       const [report, catalog] = await Promise.all([
-        this.organizationReport(organizationId, from, to),
-        this.uow.repos.models.listByOrganization(organizationId),
+        this.gateway.instanceUsage(from, to),
+        this.uow.repos.models.list(),
       ]);
       const publicNames = new Map(catalog.map((model) => [model.gatewayModelName, model.publicModelName]));
 
@@ -63,29 +61,32 @@ export class UsageService {
     });
   }
 
-  async byProvider(organizationId: string, range: DateRange): Promise<UsageBreakdownRow[]> {
+  async byProvider(range: DateRange): Promise<UsageBreakdownRow[]> {
     const { from, to } = resolveRange(range);
-    return this.cached(`usage:providers:${organizationId}:${from}:${to}`, async () =>
-      toRows((await this.organizationReport(organizationId, from, to)).byProvider),
+    return this.cached(`usage:providers:${from}:${to}`, async () =>
+      toRows((await this.gateway.instanceUsage(from, to)).byProvider),
     );
   }
 
-  async byDeveloper(organizationId: string, range: DateRange): Promise<DeveloperUsageRow[]> {
+  async byDeveloper(range: DateRange): Promise<DeveloperUsageRow[]> {
     const { from, to } = resolveRange(range);
-    return this.cached(`usage:developers:${organizationId}:${from}:${to}`, async () => {
-      const memberships = await this.uow.repos.memberships.listMirrored(organizationId);
+    return this.cached(`usage:developers:${from}:${to}`, async () => {
+      const [mirrored, users] = await Promise.all([
+        this.uow.repos.users.listMirrored(),
+        this.uow.repos.users.list(),
+      ]);
+      const byId = new Map(users.map((user) => [user.id, user]));
 
       // ponytail: one gateway call per developer, cached for a minute. Fine into the hundreds;
       // beyond that switch to the gateway's grouped spend report.
       const rows = await Promise.all(
-        memberships.map(async (membership) => {
-          const report = await this.gateway
-            .userUsage(membership.litellmUserId as string, from, to)
-            .catch(() => null);
+        mirrored.map(async (entry) => {
+          const report = await this.gateway.userUsage(entry.litellmUserId, from, to).catch(() => null);
+          const user = byId.get(entry.id);
           return {
-            id: membership.user.id,
-            name: membership.user.name,
-            email: membership.user.email,
+            id: entry.id,
+            name: user?.name ?? '',
+            email: user?.email ?? '',
             spend: report?.totalSpend ?? 0,
             requests: report?.totalRequests ?? 0,
           };
@@ -95,8 +96,8 @@ export class UsageService {
     });
   }
 
-  async budgets(organizationId: string): Promise<BudgetRow[]> {
-    const budgets = await this.uow.repos.budgets.listByOrganization(organizationId);
+  async budgets(): Promise<BudgetRow[]> {
+    const budgets = await this.uow.repos.budgets.list();
     return budgets.flatMap((budget) => {
       const holder = budget.user
         ? { kind: 'developer' as const, id: budget.user.id, name: budget.user.name, email: budget.user.email }
@@ -118,11 +119,11 @@ export class UsageService {
   }
 
   /** Everything a developer needs to point an SDK at the gateway. */
-  async connectInfo(organizationId: string, userId: string): Promise<ConnectInfo> {
+  async connectInfo(userId: string): Promise<ConnectInfo> {
     const baseUrl = this.config.gatewayPublicUrl.replace(/\/$/, '');
     const [grants, keys] = await Promise.all([
-      this.uow.repos.modelAccess.listEffectiveForUser(organizationId, userId),
-      this.uow.repos.keys.listActiveForUser(organizationId, userId),
+      this.uow.repos.modelAccess.listEffectiveForUser(userId),
+      this.uow.repos.keys.listActiveForUser(userId),
     ]);
 
     return {
@@ -136,12 +137,6 @@ export class UsageService {
         createdAt: key.createdAt.toISOString(),
       })),
     };
-  }
-
-  private organizationReport(organizationId: string, from: string, to: string): Promise<UsageReport> {
-    return this.organizations
-      .ensureGatewayOrganization(organizationId)
-      .then((gatewayOrgId) => this.gateway.organizationUsage(gatewayOrgId, from, to));
   }
 
   private async cached<T>(key: string, load: () => Promise<T>): Promise<T> {

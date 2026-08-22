@@ -3,8 +3,9 @@ import type { Db } from '../../infra/db/client.js';
 
 export type Provider = {
   id: string;
-  organizationId: string;
   name: string;
+  /** Namespaces this provider's models in the gateway: "{slug}/{publicModelName}". */
+  slug: string;
   type: ProviderType;
   status: ProviderStatus;
   /** Secrets Manager ARN or local reference. Never the credential itself. */
@@ -16,11 +17,12 @@ export type Provider = {
 };
 
 export interface ProviderRepository {
-  listByOrganization(organizationId: string): Promise<Array<Provider & { modelCount: number }>>;
-  findInOrganization(id: string, organizationId: string): Promise<Provider | null>;
+  list(): Promise<Array<Provider & { modelCount: number }>>;
+  findById(id: string): Promise<Provider | null>;
   create(input: {
-    organizationId: string;
+    id: string;
     name: string;
+    slug: string;
     type: ProviderType;
     secretRef: string;
     config: Record<string, string>;
@@ -34,8 +36,8 @@ export interface ProviderRepository {
 
 const SELECT = {
   id: true,
-  organizationId: true,
   name: true,
+  slug: true,
   type: true,
   status: true,
   secretRef: true,
@@ -51,23 +53,23 @@ const toDomain = (row: Row): Provider => ({ ...row, config: (row.config ?? {}) a
 export class PrismaProviderRepository implements ProviderRepository {
   constructor(private readonly db: Db) {}
 
-  async listByOrganization(organizationId: string) {
+  async list() {
     const rows = await this.db.provider.findMany({
-      where: { organizationId },
       select: { ...SELECT, _count: { select: { models: true } } },
       orderBy: { createdAt: 'asc' },
     });
     return rows.map((row) => ({ ...toDomain(row), modelCount: row._count.models }));
   }
 
-  async findInOrganization(id: string, organizationId: string): Promise<Provider | null> {
-    const row = await this.db.provider.findFirst({ where: { id, organizationId }, select: SELECT });
+  async findById(id: string): Promise<Provider | null> {
+    const row = await this.db.provider.findUnique({ where: { id }, select: SELECT });
     return row ? toDomain(row) : null;
   }
 
   async create(input: {
-    organizationId: string;
+    id: string;
     name: string;
+    slug: string;
     type: ProviderType;
     secretRef: string;
     config: Record<string, string>;

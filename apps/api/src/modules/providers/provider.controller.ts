@@ -9,13 +9,11 @@ export const providerController =
   async (app) => {
     app.get('/provider-types', { preHandler: guards('ADMIN') }, async () => services.providers.listTypes());
 
-    app.get('/providers', { preHandler: guards('MEMBER') }, async (request) =>
-      services.providers.list(authOf(request).organizationId),
-    );
+    app.get('/providers', { preHandler: guards('MEMBER') }, async () => services.providers.list());
 
     app.get('/providers/:id', { preHandler: guards('MEMBER') }, async (request) => {
       const { id } = parse(idParamSchema, request.params);
-      return services.providers.get(authOf(request).organizationId, id);
+      return services.providers.get(id);
     });
 
     app.post(
@@ -35,7 +33,7 @@ export const providerController =
 
     app.post('/providers/:id/test', { preHandler: guards('ADMIN') }, async (request) => {
       const { id } = parse(idParamSchema, request.params);
-      return services.providers.test(authOf(request).organizationId, id);
+      return services.providers.test(id);
     });
 
     app.delete('/providers/:id', { preHandler: guards('ADMIN') }, async (request, reply) => {

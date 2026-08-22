@@ -3,8 +3,8 @@ import { dirname } from 'node:path';
 import type { Config } from '../../core/config.js';
 import type { SecretStore } from '../../core/ports.js';
 
-export function secretReference(deployEnv: string, organizationId: string, providerId: string): string {
-  return `gatehouse/${deployEnv}/${organizationId}/providers/${providerId}`;
+export function secretReference(deployEnv: string, providerId: string): string {
+  return `gatehouse/${deployEnv}/providers/${providerId}`;
 }
 
 /**

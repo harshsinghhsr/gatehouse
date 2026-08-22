@@ -5,18 +5,14 @@ import { PrismaBudgetRepository } from '../../modules/developers/budget.reposito
 import { PrismaGatewayKeyRepository } from '../../modules/developers/gateway-key.repository.js';
 import { PrismaModelAccessRepository } from '../../modules/developers/model-access.repository.js';
 import { PrismaProviderModelRepository } from '../../modules/models/provider-model.repository.js';
-import { PrismaMembershipRepository } from '../../modules/organizations/membership.repository.js';
-import { PrismaOrganizationRepository } from '../../modules/organizations/organization.repository.js';
-import { PrismaUserRepository } from '../../modules/organizations/user.repository.js';
+import { PrismaUserRepository } from '../../modules/users/user.repository.js';
 import { PrismaProviderRepository } from '../../modules/providers/provider.repository.js';
 import { PrismaTeamRepository } from '../../modules/teams/team.repository.js';
 import type { Db } from './client.js';
 
 function buildRepositories(db: Db): Repositories {
   return {
-    organizations: new PrismaOrganizationRepository(db),
     users: new PrismaUserRepository(db),
-    memberships: new PrismaMembershipRepository(db),
     teams: new PrismaTeamRepository(db),
     providers: new PrismaProviderRepository(db),
     models: new PrismaProviderModelRepository(db),

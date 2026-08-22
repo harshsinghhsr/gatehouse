@@ -10,6 +10,7 @@ import type { Config } from '../../core/config.js';
 import { NotFoundError } from '../../core/errors.js';
 import type { LlmGateway } from '../../core/gateway.js';
 import type { Logger, SecretStore } from '../../core/ports.js';
+import { slugify } from '../../core/slug.js';
 import type { UnitOfWork } from '../../core/unit-of-work.js';
 import type { AuthContext } from '../auth/authenticator.js';
 import type { AuditService } from '../audit/audit.service.js';
@@ -39,13 +40,13 @@ export class ProviderService {
     );
   }
 
-  async list(organizationId: string): Promise<ProviderDto[]> {
-    const providers = await this.uow.repos.providers.listByOrganization(organizationId);
+  async list(): Promise<ProviderDto[]> {
+    const providers = await this.uow.repos.providers.list();
     return providers.map((provider) => toDto(provider, provider.modelCount));
   }
 
-  async get(organizationId: string, id: string): Promise<ProviderDto> {
-    const provider = await this.require(organizationId, id);
+  async get(id: string): Promise<ProviderDto> {
+    const provider = await this.require(id);
     const models = await this.uow.repos.models.listByProvider(provider.id);
     return toDto(provider, models.length);
   }
@@ -58,26 +59,26 @@ export class ProviderService {
     // Verified before any state exists, so a bad credential leaves nothing behind.
     await adapter.verify(credentials, config);
 
-    const organization = await this.uow.repos.organizations.findById(context.organizationId);
-    if (!organization) throw new NotFoundError('Organization');
-
     // The id is minted here so the secret can be written under its final reference — there is
     // no window in which a row points at a placeholder.
     const providerId = randomUUID();
-    const reference = secretReference(this.config.deployEnv, context.organizationId, providerId);
-    const credentialName = `${organization.slug}__${providerId}`;
+    const slug = slugify(request.name);
+    const reference = secretReference(this.config.deployEnv, providerId);
+    // The id is retained so deleting and recreating a provider under the same name cannot
+    // collide with the credential the old one left behind in the gateway.
+    const credentialName = `${slug}__${providerId}`;
 
     await this.secrets.put(reference, credentials);
     try {
       await this.gateway.putCredential(credentialName, adapter.credentialValues(credentials, config), {
-        organization: organization.slug,
         provider: request.name,
       });
 
       const provider = await this.uow.transaction(async (repos) => {
         const created = await repos.providers.create({
-          organizationId: context.organizationId,
+          id: providerId,
           name: request.name,
+          slug,
           type: request.type,
           secretRef: reference,
           config,
@@ -108,7 +109,7 @@ export class ProviderService {
   }
 
   async update(context: AuthContext, id: string, request: UpdateProviderRequest): Promise<ProviderDto> {
-    const provider = await this.require(context.organizationId, id);
+    const provider = await this.require(id);
     const adapter = adapterFor(provider.type);
 
     if (request.credentials || request.config) {
@@ -152,8 +153,8 @@ export class ProviderService {
   }
 
   /** Re-checks the stored credential and records the outcome for the dashboard. */
-  async test(organizationId: string, id: string): Promise<ProviderTestResult> {
-    const provider = await this.require(organizationId, id);
+  async test(id: string): Promise<ProviderTestResult> {
+    const provider = await this.require(id);
     const adapter = adapterFor(provider.type);
     const credentials = await this.secrets.get(provider.secretRef);
 
@@ -169,7 +170,7 @@ export class ProviderService {
   }
 
   async delete(context: AuthContext, id: string): Promise<void> {
-    const provider = await this.require(context.organizationId, id);
+    const provider = await this.require(id);
     const models = await this.uow.repos.models.listByProvider(provider.id);
 
     // Gateway first: a deployment left behind would keep serving traffic with no record here.
@@ -200,8 +201,8 @@ export class ProviderService {
     });
   }
 
-  private async require(organizationId: string, id: string): Promise<Provider> {
-    const provider = await this.uow.repos.providers.findInOrganization(id, organizationId);
+  private async require(id: string): Promise<Provider> {
+    const provider = await this.uow.repos.providers.findById(id);
     if (!provider) throw new NotFoundError('Provider');
     return provider;
   }

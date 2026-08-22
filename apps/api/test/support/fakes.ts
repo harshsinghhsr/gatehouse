@@ -28,9 +28,7 @@ export function stubRepositories(overrides: Partial<Repositories> = {}): Reposit
     overrides[key] ?? autoStub<Repositories[K] & object>(String(key), {});
 
   return {
-    organizations: named('organizations'),
     users: named('users'),
-    memberships: named('memberships'),
     teams: named('teams'),
     providers: named('providers'),
     models: named('models'),
@@ -74,7 +72,6 @@ export function fakeGateway(overrides: Partial<LlmGateway> = {}): LlmGateway & {
     updateKey: record('updateKey', undefined),
     revokeKeyByAlias: record('revokeKeyByAlias', undefined),
     readKeyUsage: record('readKeyUsage', { spend: 0, maxBudget: null }),
-    createOrganization: record('createOrganization', 'gw-org'),
     createUser: record('createUser', 'gw-user'),
     createTeam: record('createTeam', 'gw-team'),
     addTeamMember: record('addTeamMember', undefined),
@@ -82,7 +79,7 @@ export function fakeGateway(overrides: Partial<LlmGateway> = {}): LlmGateway & {
     deleteCredential: record('deleteCredential', undefined),
     registerModel: record('registerModel', 'gw-model'),
     deregisterModel: record('deregisterModel', undefined),
-    organizationUsage: record('organizationUsage', emptyUsage),
+    instanceUsage: record('instanceUsage', emptyUsage),
     userUsage: record('userUsage', emptyUsage),
     health: record('health', undefined),
   };

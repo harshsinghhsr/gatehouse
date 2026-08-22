@@ -1,10 +1,9 @@
 import { randomBytes } from 'node:crypto';
 import type { Redis } from 'ioredis';
 
-/** What a signed-in caller is: an identity plus the one organization they are acting in. */
+/** What a signed-in caller is. Single-tenant, so identity is the whole of it. */
 export type Session = {
   userId: string;
-  organizationId: string;
 };
 
 export interface SessionStore {

@@ -40,7 +40,7 @@ async function flociIsUp(): Promise<boolean> {
 /** The behaviour every secret store must exhibit, whichever backend is configured. */
 function contractTests(name: string, create: () => SecretStore, skip: boolean | string) {
   describe(`${name} secret store`, { skip }, () => {
-    const reference = () => secretReference('test', `org-${Date.now()}-${Math.random()}`, 'provider-1');
+    const reference = () => secretReference('test', `provider-${Date.now()}-${Math.random()}`);
 
     test('stores and returns a credential unchanged', async () => {
       const store = create();

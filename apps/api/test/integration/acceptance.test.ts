@@ -31,10 +31,10 @@ const gateway = new LiteLlmGateway({ baseUrl: GATEWAY, masterKey: MASTER_KEY, lo
 const stamp = Date.now();
 const email = `dev-${stamp}@example.test`;
 const password = 'integration-test-password';
-const slug = `acme-${stamp}`;
+const slug = `mock-${stamp}`;
 
-let organizationId = '';
 let userId = '';
+let providerId = '';
 let modelId = '';
 let litellmModelId = '';
 let cookie = '';
@@ -54,13 +54,10 @@ async function api(method: string, path: string, body?: unknown) {
 before(async () => {
   if (!enabled) return;
 
-  // Seed the tenant directly: sign-up is bootstrap-only by design.
-  const org = await prisma.organization.create({ data: { name: `Acme ${stamp}`, slug } });
+  // Seed the owner directly: sign-up is bootstrap-only by design.
   const user = await prisma.user.create({
-    data: { email, name: 'Integration Dev', passwordHash: await hasher.hash(password) },
+    data: { email, name: 'Integration Dev', passwordHash: await hasher.hash(password), role: 'OWNER' },
   });
-  await prisma.membership.create({ data: { organizationId: org.id, userId: user.id, role: 'OWNER' } });
-  organizationId = org.id;
   userId = user.id;
 
   // A model that answers without a provider credential.
@@ -71,8 +68,9 @@ before(async () => {
     mock_response: MOCK_REPLY,
   });
   const provider = await prisma.provider.create({
-    data: { organizationId: org.id, name: 'Mock', type: 'OPENAI', secretRef: `test://${stamp}` },
+    data: { name: `Mock ${stamp}`, slug, type: 'OPENAI', secretRef: `test://${stamp}` },
   });
+  providerId = provider.id;
   const model = await prisma.providerModel.create({
     data: {
       providerId: provider.id,
@@ -87,7 +85,8 @@ before(async () => {
 
 after(async () => {
   if (!enabled) return;
-  await prisma.organization.deleteMany({ where: { id: organizationId } });
+  await prisma.provider.deleteMany({ where: { id: providerId } });
+  await prisma.user.deleteMany({ where: { id: userId } });
   await gateway.deregisterModel(litellmModelId).catch(() => undefined);
   await prisma.$disconnect();
 });
@@ -98,7 +97,8 @@ test('acceptance: login, grant a model, mint a key, call the gateway, revoke', {
 
   const me = await api('GET', '/api/me');
   assert.equal(me.status, 200);
-  assert.equal(me.body?.activeOrganizationId, organizationId);
+  assert.equal((me.body?.user as { id: string } | undefined)?.id, userId);
+  assert.equal(me.body?.role, 'OWNER');
 
   const grant = await api('PUT', `/api/developers/${userId}/models`, { modelIds: [modelId] });
   assert.equal(grant.status, 200, JSON.stringify(grant.body));
@@ -112,7 +112,7 @@ test('acceptance: login, grant a model, mint a key, call the gateway, revoke', {
   const stored = await prisma.gatewayKeyReference.findUniqueOrThrow({ where: { id: keyId } });
   assert.ok(!JSON.stringify(stored).includes(key));
 
-  // Developers use the public name; LiteLLM resolves the alias to "{org}/gpt-5".
+  // Developers use the public name; LiteLLM resolves the alias to "{providerSlug}/gpt-5".
   const call = await fetch(`${GATEWAY}/v1/chat/completions`, {
     method: 'POST',
     headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
@@ -122,6 +122,21 @@ test('acceptance: login, grant a model, mint a key, call the gateway, revoke', {
   assert.equal(call.status, 200, completionBody);
   const completion = JSON.parse(completionBody) as { choices: Array<{ message: { content: string } }> };
   assert.match(completion.choices[0]?.message.content ?? '', new RegExp(MOCK_REPLY));
+
+  // LiteLLM writes spend logs on a batch interval, and our own totals are cached for a minute,
+  // so wait for the gateway to report the call before asking the API for it.
+  const today = new Date().toISOString().slice(0, 10);
+  for (let attempt = 0; attempt < 15; attempt++) {
+    if ((await gateway.instanceUsage(today, today)).totalRequests >= 1) break;
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+  }
+
+  const usage = await api('GET', '/api/usage');
+  assert.equal(usage.status, 200, JSON.stringify(usage.body));
+  assert.ok(
+    (usage.body?.requests as number) >= 1,
+    `a real gateway call must show up in instance usage: ${JSON.stringify(usage.body)}`,
+  );
 
   const revoked = await api('POST', `/api/developers/${userId}/keys/${keyId}/revoke`);
   assert.equal(revoked.status, 200);
@@ -148,31 +163,4 @@ test('a model the developer was never granted is not callable', { skip: !enabled
     body: JSON.stringify({ model: 'gpt-5', messages: [{ role: 'user', content: 'hi' }] }),
   });
   assert.ok(call.status === 401 || call.status === 400, `expected a rejection, got ${call.status}`);
-});
-
-test('another organization cannot touch our developer', { skip: !enabled }, async () => {
-  const otherOrg = await prisma.organization.create({
-    data: { name: `Other ${stamp}`, slug: `other-${stamp}` },
-  });
-  const otherUser = await prisma.user.create({
-    data: {
-      email: `other-${stamp}@example.test`,
-      name: 'Outsider',
-      passwordHash: await hasher.hash(password),
-    },
-  });
-  await prisma.membership.create({
-    data: { organizationId: otherOrg.id, userId: otherUser.id, role: 'OWNER' },
-  });
-
-  cookie = '';
-  await api('POST', '/api/auth/login', { email: `other-${stamp}@example.test`, password });
-
-  assert.equal((await api('GET', `/api/developers/${userId}`)).status, 404);
-  assert.equal((await api('POST', `/api/developers/${userId}/keys`)).status, 404);
-  assert.equal((await api('PUT', `/api/developers/${userId}/models`, { modelIds: [modelId] })).status, 404);
-
-  await prisma.organization.delete({ where: { id: otherOrg.id } });
-  await prisma.user.delete({ where: { id: otherUser.id } });
-  cookie = '';
 });

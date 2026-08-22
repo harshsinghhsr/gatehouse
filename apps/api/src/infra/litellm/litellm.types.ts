@@ -21,7 +21,6 @@ export type KeyInfoResponse = {
   };
 };
 
-export type NewOrganizationResponse = { organization_id: string };
 export type NewUserResponse = { user_id: string };
 export type NewTeamResponse = { team_id: string };
 export type NewModelResponse = { model_info?: { id?: string } };

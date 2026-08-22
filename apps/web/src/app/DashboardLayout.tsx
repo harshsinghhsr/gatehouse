@@ -18,9 +18,6 @@ const TABS = [
 ];
 
 export function DashboardLayout() {
-  const { data: session } = useSession();
-  const organization = session?.organizations.find((org) => org.id === session.activeOrganizationId);
-
   return (
     <div className="shell">
       <header className="topbar">
@@ -28,8 +25,7 @@ export function DashboardLayout() {
           <Mark />
           <nav className="crumbs" aria-label="Breadcrumb">
             <span className="crumb-sep">/</span>
-            <span className="crumb-org">{organization?.name ?? 'Gatehouse'}</span>
-            {organization?.slug && <span className="crumb-badge">{organization.slug}</span>}
+            <span className="crumb-org">Gatehouse</span>
           </nav>
 
           <div className="topbar-right">

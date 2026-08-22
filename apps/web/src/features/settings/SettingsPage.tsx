@@ -8,41 +8,22 @@ export function SettingsPage() {
   const health = useHealth();
   const connect = useConnectInfo();
 
-  const organization = session.data?.organizations.find(
-    (org) => org.id === session.data.activeOrganizationId,
-  );
-
   return (
     <div className="stack">
       <PageHead
         title="Settings"
-        description="Organization, account, and the health of the services behind the gateway."
+        description="Your account and the health of the services behind the gateway."
       />
 
       <div className="grid grid-half">
-        <Section title="Organization">
-          <div className="card">
-            <div className="card-pad" style={{ paddingBottom: 8 }}>
-              <Row label="Name">{organization?.name ?? '—'}</Row>
-              <Row label="Slug" mono>
-                {organization?.slug ?? '—'}
-              </Row>
-              <Row label="Your role">
-                <Badge tone="info">{session.data?.role.toLowerCase() ?? '—'}</Badge>
-              </Row>
-            </div>
-            <div className="card-foot">
-              The slug namespaces this organization&rsquo;s models inside the gateway, so two organizations can
-              both publish a model called gpt-5.
-            </div>
-          </div>
-        </Section>
-
         <Section title="Account">
           <div className="card card-pad">
             <Row label="Name">{session.data?.user.name ?? '—'}</Row>
             <Row label="Email" mono>
               {session.data?.user.email ?? '—'}
+            </Row>
+            <Row label="Your role">
+              <Badge tone="info">{session.data?.role.toLowerCase() ?? '—'}</Badge>
             </Row>
             <Row label="Theme">
               <span className="muted">Set from the toolbar</span>

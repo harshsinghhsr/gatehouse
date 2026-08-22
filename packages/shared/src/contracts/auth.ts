@@ -15,7 +15,6 @@ export const registerRequestSchema = z.object({
   email: emailSchema,
   name: z.string().min(1).max(120),
   password: passwordSchema,
-  organizationName: z.string().min(1).max(120),
 });
 export type RegisterRequest = z.infer<typeof registerRequestSchema>;
 
@@ -27,19 +26,9 @@ export const sessionUserSchema = z.object({
 });
 export type SessionUser = z.infer<typeof sessionUserSchema>;
 
-export const organizationSummarySchema = z.object({
-  id: z.string(),
-  name: z.string(),
-  slug: z.string(),
-  role: roleSchema,
-});
-export type OrganizationSummary = z.infer<typeof organizationSummarySchema>;
-
 export const meResponseSchema = z.object({
   user: sessionUserSchema,
   role: roleSchema,
-  activeOrganizationId: z.string(),
-  organizations: z.array(organizationSummarySchema),
 });
 export type MeResponse = z.infer<typeof meResponseSchema>;
 

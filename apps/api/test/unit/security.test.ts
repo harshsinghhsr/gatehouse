@@ -42,7 +42,7 @@ test('audit metadata is scrubbed of anything secret-shaped', async () => {
   });
 
   await new AuditService(fakeUnitOfWork(repos)).record(
-    { organizationId: 'org-1', userId: 'user-1', ip: null },
+    { userId: 'user-1', ip: null },
     {
       action: 'PROVIDER_CREATED',
       targetType: 'provider',

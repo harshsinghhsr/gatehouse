@@ -3,7 +3,6 @@ import type { Db } from '../../infra/db/client.js';
 
 export type AuditRecord = {
   id: string;
-  organizationId: string;
   actorUserId: string | null;
   action: AuditAction;
   targetType: string;
@@ -18,7 +17,6 @@ export type NewAuditRecord = Omit<AuditRecord, 'id' | 'createdAt'>;
 export interface AuditRepository {
   append(record: NewAuditRecord): Promise<void>;
   list(query: {
-    organizationId: string;
     action?: AuditAction | undefined;
     cursor?: string | undefined;
     limit: number;
@@ -27,7 +25,6 @@ export interface AuditRepository {
 
 const SELECT = {
   id: true,
-  organizationId: true,
   actorUserId: true,
   action: true,
   targetType: true,
@@ -54,13 +51,12 @@ export class PrismaAuditRepository implements AuditRepository {
   }
 
   async list(query: {
-    organizationId: string;
     action?: AuditAction | undefined;
     cursor?: string | undefined;
     limit: number;
   }): Promise<AuditRecord[]> {
     const rows = await this.db.auditLog.findMany({
-      where: { organizationId: query.organizationId, ...(query.action ? { action: query.action } : {}) },
+      where: query.action ? { action: query.action } : {},
       select: SELECT,
       orderBy: { createdAt: 'desc' },
       take: query.limit,

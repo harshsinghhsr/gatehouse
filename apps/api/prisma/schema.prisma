@@ -1,5 +1,6 @@
 // Control-plane data only.
 // Never here: provider API keys, plaintext gateway keys, anything from LiteLLM's schema.
+// Single-tenant: one deployment is one organization, and that organization is implicit.
 
 generator client {
   provider = "prisma-client"
@@ -12,10 +13,17 @@ datasource db {
   provider = "postgresql"
 }
 
+/// Instance-wide authority.
 enum Role {
   OWNER
   ADMIN
   MEMBER
+}
+
+/// Authority within one team. A LEAD manages that team's members and model access, nothing else.
+enum TeamRole {
+  MEMBER
+  LEAD
 }
 
 enum UserStatus {
@@ -45,79 +53,44 @@ enum BudgetPeriod {
   MONTHLY
 }
 
-model Organization {
-  id           String   @id @default(uuid())
-  name         String
-  /// Also the LiteLLM model-name namespace: models register as "{slug}/{publicModelName}".
-  slug         String   @unique
-  litellmOrgId String?  @unique
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  memberships Membership[]
-  teams       Team[]
-  providers   Provider[]
-  modelAccess ModelAccess[]
-  keys        GatewayKeyReference[]
-  budgets     Budget[]
-  auditLogs   AuditLog[]
-}
-
 model User {
   id           String     @id @default(uuid())
   email        String     @unique
   name         String
   /// argon2id. Null once an external identity provider owns the credential.
   passwordHash String?
+  role         Role       @default(MEMBER)
   status       UserStatus @default(ACTIVE)
+  /// Mirrored LiteLLM internal user, so per-developer spend comes from /user/daily/activity.
+  litellmUserId String?   @unique
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
-  memberships Membership[]
   teamMembers TeamMember[]
   modelAccess ModelAccess[]
   keys        GatewayKeyReference[]
   budgets     Budget[]
 }
 
-model Membership {
-  id             String   @id @default(uuid())
-  organizationId String
-  userId         String
-  role           Role
-  /// Mirrored LiteLLM internal user, so per-developer spend comes from /user/daily/activity.
-  litellmUserId  String?  @unique
-  createdAt      DateTime @default(now())
-
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([organizationId, userId])
-  @@index([userId])
-}
-
 model Team {
-  id             String   @id @default(uuid())
-  organizationId String
-  name           String
-  slug           String
-  litellmTeamId  String?  @unique
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id            String   @id @default(uuid())
+  name          String
+  slug          String   @unique
+  litellmTeamId String?  @unique
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  members      TeamMember[]
-  modelAccess  ModelAccess[]
-  keys         GatewayKeyReference[]
-  budgets      Budget[]
-
-  @@unique([organizationId, slug])
+  members     TeamMember[]
+  modelAccess ModelAccess[]
+  keys        GatewayKeyReference[]
+  budgets     Budget[]
 }
 
 model TeamMember {
   id        String   @id @default(uuid())
   teamId    String
   userId    String
+  role      TeamRole @default(MEMBER)
   createdAt DateTime @default(now())
 
   team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
@@ -128,26 +101,26 @@ model TeamMember {
 }
 
 model Provider {
-  id             String         @id @default(uuid())
-  organizationId String
-  name           String
-  type           ProviderType
-  status         ProviderStatus @default(ACTIVE)
+  id     String         @id @default(uuid())
+  name   String         @unique
+  /// Namespaces this provider's models in the gateway: "{slug}/{publicModelName}".
+  /// Derived from the name at creation and never changed — renaming would orphan every
+  /// registered model name and every key alias pointing at it.
+  slug   String         @unique
+  type   ProviderType
+  status ProviderStatus @default(ACTIVE)
   /// Secrets Manager ARN or env:// URI. NEVER the credential itself.
-  secretRef      String
+  secretRef String
   /// Non-secret config only: apiBase, apiVersion.
-  config         Json           @default("{}")
+  config    Json         @default("{}")
   /// Reusable LiteLLM credential the models point at via litellm_credential_name.
   litellmCredentialName String? @unique
-  lastTestedAt   DateTime?
-  lastTestError  String?
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
+  lastTestedAt  DateTime?
+  lastTestError String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
-  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  models       ProviderModel[]
-
-  @@unique([organizationId, name])
+  models ProviderModel[]
 }
 
 model ProviderModel {
@@ -157,7 +130,7 @@ model ProviderModel {
   publicModelName   String
   /// What LiteLLM calls upstream: "azure/my-gpt5-deployment".
   providerModelName String
-  /// Globally unique across orgs: "{orgSlug}/{publicModelName}". Keys alias it back.
+  /// Globally unique: "{providerSlug}/{publicModelName}". Keys alias it back to the short name.
   litellmModelName  String   @unique
   /// model_info.id returned by POST /model/new.
   litellmModelId    String?  @unique
@@ -175,77 +148,67 @@ model ProviderModel {
 /// Absence of a row means denied. Exactly one of userId / teamId is set.
 model ModelAccess {
   id              String   @id @default(uuid())
-  organizationId  String
   userId          String?
   teamId          String?
   providerModelId String
   createdAt       DateTime @default(now())
 
-  organization  Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   user          User?         @relation(fields: [userId], references: [id], onDelete: Cascade)
   team          Team?         @relation(fields: [teamId], references: [id], onDelete: Cascade)
   providerModel ProviderModel @relation(fields: [providerModelId], references: [id], onDelete: Cascade)
 
   @@unique([userId, teamId, providerModelId])
-  @@index([organizationId])
 }
 
 /// Reference to a LiteLLM virtual key. The key itself is shown once and never stored.
 model GatewayKeyReference {
-  id             String    @id @default(uuid())
-  organizationId String
-  userId         String?
-  teamId         String?
+  id     String  @id @default(uuid())
+  userId String?
+  teamId String?
   /// Our handle into LiteLLM: revoke and rotate go through key_alias, not the secret.
-  keyAlias       String    @unique
+  keyAlias     String    @unique
   /// LiteLLM token_id (the hashed token).
-  litellmKeyId   String
+  litellmKeyId String
   /// Masked display value only, e.g. "sk-...AbCd".
-  keyPrefix      String?
-  status         KeyStatus @default(ACTIVE)
-  expiresAt      DateTime?
-  revokedAt      DateTime?
-  createdAt      DateTime  @default(now())
+  keyPrefix    String?
+  status       KeyStatus @default(ACTIVE)
+  expiresAt    DateTime?
+  revokedAt    DateTime?
+  createdAt    DateTime  @default(now())
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user         User?        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  team         Team?        @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+  team Team? @relation(fields: [teamId], references: [id], onDelete: Cascade)
 
-  @@index([organizationId, status])
+  @@index([status])
 }
 
 model Budget {
-  id             String       @id @default(uuid())
-  organizationId String
-  userId         String?
-  teamId         String?
-  maxBudget      Decimal      @db.Decimal(12, 4)
-  period         BudgetPeriod
-  rpmLimit       Int?
-  tpmLimit       Int?
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+  id        String       @id @default(uuid())
+  userId    String?
+  teamId    String?
+  maxBudget Decimal      @db.Decimal(12, 4)
+  period    BudgetPeriod
+  rpmLimit  Int?
+  tpmLimit  Int?
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user         User?        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  team         Team?        @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+  team Team? @relation(fields: [teamId], references: [id], onDelete: Cascade)
 
-  @@unique([organizationId, userId, teamId])
+  @@unique([userId, teamId])
 }
 
 model AuditLog {
-  id             String   @id @default(uuid())
-  organizationId String
-  actorUserId    String?
-  action         String
-  targetType     String
-  targetId       String
+  id          String   @id @default(uuid())
+  actorUserId String?
+  action      String
+  targetType  String
+  targetId    String
   /// Redacted by the writer. Never contains a secret.
-  metadata       Json     @default("{}")
-  ip             String?
-  createdAt      DateTime @default(now())
+  metadata    Json     @default("{}")
+  ip          String?
+  createdAt   DateTime @default(now())
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-
-  @@index([organizationId, createdAt])
+  @@index([createdAt])
 }

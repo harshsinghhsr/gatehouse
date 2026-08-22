@@ -18,27 +18,21 @@ export class ModelService {
     private readonly audit: AuditService,
   ) {}
 
-  async list(organizationId: string): Promise<ModelDto[]> {
-    const models = await this.uow.repos.models.listByOrganization(organizationId);
+  async list(): Promise<ModelDto[]> {
+    const models = await this.uow.repos.models.list();
     return models.map(toDto);
   }
 
   async create(context: AuthContext, request: CreateModelRequest): Promise<ModelDto> {
-    const provider = await this.uow.repos.providers.findInOrganization(
-      request.providerId,
-      context.organizationId,
-    );
+    const provider = await this.uow.repos.providers.findById(request.providerId);
     if (!provider) throw new NotFoundError('Provider');
     if (!provider.litellmCredentialName) {
       throw new ConflictError('This provider has no gateway credential yet');
     }
 
-    const organization = await this.uow.repos.organizations.findById(context.organizationId);
-    if (!organization) throw new NotFoundError('Organization');
-
-    // Namespaced so two organizations can both publish a model called "gpt-5"; keys carry an
-    // alias that lets their developers keep typing the short name.
-    const gatewayModelName = `${organization.slug}/${request.publicModelName}`;
+    // Namespaced per provider so two providers can both publish "gpt-5" — an Azure one and a
+    // direct-OpenAI one during a migration. Keys carry an alias so developers keep typing "gpt-5".
+    const gatewayModelName = `${provider.slug}/${request.publicModelName}`;
 
     const gatewayModelId = await this.gateway.registerModel(
       gatewayModelName,
@@ -46,7 +40,7 @@ export class ModelService {
         ...adapterFor(provider.type).modelParams(request.providerModelName),
         litellm_credential_name: provider.litellmCredentialName,
       },
-      { organization: organization.slug, provider_id: provider.id },
+      { provider_id: provider.id, provider: provider.slug },
     );
 
     const model = await this.uow.transaction(async (repos) => {
@@ -75,7 +69,7 @@ export class ModelService {
 
   /** Disabling deregisters the deployment; enabling registers it again under the same name. */
   async setEnabled(context: AuthContext, id: string, enabled: boolean): Promise<ModelDto> {
-    const model = await this.require(context.organizationId, id);
+    const model = await this.require(id);
     if (model.enabled === enabled) return toDto(model);
 
     let gatewayModelId = model.litellmModelId;
@@ -108,7 +102,7 @@ export class ModelService {
   }
 
   async delete(context: AuthContext, id: string): Promise<void> {
-    const model = await this.require(context.organizationId, id);
+    const model = await this.require(id);
     if (model.litellmModelId) await this.gateway.deregisterModel(model.litellmModelId);
 
     await this.uow.transaction(async (repos) => {
@@ -126,8 +120,8 @@ export class ModelService {
     });
   }
 
-  private async require(organizationId: string, id: string): Promise<ProviderModel> {
-    const model = await this.uow.repos.models.findInOrganization(id, organizationId);
+  private async require(id: string): Promise<ProviderModel> {
+    const model = await this.uow.repos.models.findById(id);
     if (!model) throw new NotFoundError('Model');
     return model;
   }

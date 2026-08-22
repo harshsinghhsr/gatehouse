@@ -7,9 +7,7 @@ import { parse } from '../../http/validation.js';
 export const modelController =
   ({ services, guards }: AppContainer): FastifyPluginAsync =>
   async (app) => {
-    app.get('/models', { preHandler: guards('MEMBER') }, async (request) =>
-      services.models.list(authOf(request).organizationId),
-    );
+    app.get('/models', { preHandler: guards('MEMBER') }, async () => services.models.list());
 
     app.post('/models', { preHandler: guards('ADMIN') }, async (request, reply) => {
       const body = parse(createModelRequestSchema, request.body);

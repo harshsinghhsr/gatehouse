@@ -7,7 +7,6 @@ import type { Db } from '../../infra/db/client.js';
  */
 export type GatewayKeyReference = {
   id: string;
-  organizationId: string;
   userId: string | null;
   teamId: string | null;
   keyAlias: string;
@@ -19,12 +18,11 @@ export type GatewayKeyReference = {
 };
 
 export interface GatewayKeyRepository {
-  listForUser(organizationId: string, userId: string): Promise<GatewayKeyReference[]>;
-  listActiveForUser(organizationId: string, userId: string): Promise<GatewayKeyReference[]>;
-  countActiveByUser(organizationId: string): Promise<Map<string, number>>;
-  findInOrganization(id: string, organizationId: string): Promise<GatewayKeyReference | null>;
+  listForUser(userId: string): Promise<GatewayKeyReference[]>;
+  listActiveForUser(userId: string): Promise<GatewayKeyReference[]>;
+  countActiveByUser(): Promise<Map<string, number>>;
+  findById(id: string): Promise<GatewayKeyReference | null>;
   create(input: {
-    organizationId: string;
     userId: string;
     keyAlias: string;
     litellmKeyId: string;
@@ -36,7 +34,6 @@ export interface GatewayKeyRepository {
 
 const SELECT = {
   id: true,
-  organizationId: true,
   userId: true,
   teamId: true,
   keyAlias: true,
@@ -50,36 +47,35 @@ const SELECT = {
 export class PrismaGatewayKeyRepository implements GatewayKeyRepository {
   constructor(private readonly db: Db) {}
 
-  listForUser(organizationId: string, userId: string): Promise<GatewayKeyReference[]> {
+  listForUser(userId: string): Promise<GatewayKeyReference[]> {
     return this.db.gatewayKeyReference.findMany({
-      where: { organizationId, userId },
+      where: { userId },
       select: SELECT,
       orderBy: { createdAt: 'desc' },
     });
   }
 
-  listActiveForUser(organizationId: string, userId: string): Promise<GatewayKeyReference[]> {
+  listActiveForUser(userId: string): Promise<GatewayKeyReference[]> {
     return this.db.gatewayKeyReference.findMany({
-      where: { organizationId, userId, status: 'ACTIVE' },
+      where: { userId, status: 'ACTIVE' },
       select: SELECT,
     });
   }
 
-  async countActiveByUser(organizationId: string): Promise<Map<string, number>> {
+  async countActiveByUser(): Promise<Map<string, number>> {
     const rows = await this.db.gatewayKeyReference.groupBy({
       by: ['userId'],
-      where: { organizationId, status: 'ACTIVE' },
+      where: { status: 'ACTIVE' },
       _count: true,
     });
     return new Map(rows.flatMap((row) => (row.userId ? [[row.userId, row._count] as const] : [])));
   }
 
-  findInOrganization(id: string, organizationId: string): Promise<GatewayKeyReference | null> {
-    return this.db.gatewayKeyReference.findFirst({ where: { id, organizationId }, select: SELECT });
+  findById(id: string): Promise<GatewayKeyReference | null> {
+    return this.db.gatewayKeyReference.findUnique({ where: { id }, select: SELECT });
   }
 
   create(input: {
-    organizationId: string;
     userId: string;
     keyAlias: string;
     litellmKeyId: string;

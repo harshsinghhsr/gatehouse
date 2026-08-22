@@ -9,7 +9,7 @@ export type KeySpec = {
   gatewayTeamId?: string | undefined;
   /** Model names this key may call. */
   models: string[];
-  /** Public name -> gateway name, so a developer types "gpt-5" and not "acme/gpt-5". */
+  /** Public name -> gateway name, so a developer types "gpt-5" and not "azure/gpt-5". */
   aliases: Record<string, string>;
   maxBudget?: number | undefined;
   /** Duration string the gateway understands, e.g. "30d". */
@@ -45,9 +45,8 @@ export interface LlmGateway {
   revokeKeyByAlias(alias: string): Promise<void>;
   readKeyUsage(keyId: string): Promise<KeyUsage | null>;
 
-  createOrganization(name: string): Promise<string>;
-  createUser(email: string, organizationId?: string): Promise<string>;
-  createTeam(name: string, organizationId?: string): Promise<string>;
+  createUser(email: string): Promise<string>;
+  createTeam(name: string): Promise<string>;
   addTeamMember(teamId: string, userId: string): Promise<void>;
 
   putCredential(name: string, values: Record<string, string>, info?: Record<string, unknown>): Promise<void>;
@@ -56,7 +55,8 @@ export interface LlmGateway {
   registerModel(name: string, params: Record<string, unknown>, info?: Record<string, unknown>): Promise<string>;
   deregisterModel(modelId: string): Promise<void>;
 
-  organizationUsage(organizationId: string, from: string, to: string): Promise<UsageReport>;
+  /** Spend across the whole deployment. Single-tenant: there is nothing narrower to scope to. */
+  instanceUsage(from: string, to: string): Promise<UsageReport>;
   userUsage(userId: string, from: string, to: string): Promise<UsageReport>;
 
   health(): Promise<void>;

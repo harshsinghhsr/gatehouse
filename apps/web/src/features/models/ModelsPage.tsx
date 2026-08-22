@@ -10,7 +10,7 @@ export function ModelsPage() {
     <div className="stack">
       <PageHead
         title="Models"
-        description="A public name is what developers call. Inside the gateway each one is namespaced per organization, so two organizations can both publish gpt-5."
+        description="A public name is what developers call. Inside the gateway each one is namespaced per provider, so two providers can both publish gpt-5."
       />
 
       <QueryState isPending={models.isPending} error={models.error}>

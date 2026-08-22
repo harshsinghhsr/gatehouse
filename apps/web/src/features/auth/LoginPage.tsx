@@ -82,7 +82,7 @@ function SetupForm({ onSwitch }: { onSwitch: () => void }) {
   return (
     <>
       <h1>Set up Gatehouse</h1>
-      <p className="auth-sub">This creates your organization and its owner. Sign-up closes afterwards.</p>
+      <p className="auth-sub">This creates the owner account. Sign-up closes afterwards.</p>
 
       <form
         className="card card-pad"
@@ -92,9 +92,6 @@ function SetupForm({ onSwitch }: { onSwitch: () => void }) {
       >
         <Field label="Your name" error={form.formState.errors.name?.message}>
           <input autoComplete="name" autoFocus {...form.register('name')} />
-        </Field>
-        <Field label="Organization" error={form.formState.errors.organizationName?.message}>
-          <input placeholder="Acme" {...form.register('organizationName')} />
         </Field>
         <Field label="Email" error={form.formState.errors.email?.message}>
           <input type="email" autoComplete="email" {...form.register('email')} />

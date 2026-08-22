@@ -9,6 +9,10 @@ import { z } from 'zod';
 export const roleSchema = z.enum(['OWNER', 'ADMIN', 'MEMBER']);
 export type Role = z.infer<typeof roleSchema>;
 
+/** Authority within one team, independent of the instance-wide Role above. */
+export const teamRoleSchema = z.enum(['MEMBER', 'LEAD']);
+export type TeamRole = z.infer<typeof teamRoleSchema>;
+
 export const userStatusSchema = z.enum(['ACTIVE', 'DISABLED']);
 export type UserStatus = z.infer<typeof userStatusSchema>;
 

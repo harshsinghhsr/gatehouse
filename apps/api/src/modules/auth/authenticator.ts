@@ -4,12 +4,12 @@ import type { UnitOfWork } from '../../core/unit-of-work.js';
 import type { SessionStore } from './session.store.js';
 
 /**
- * The authenticated caller. `organizationId` originates here, from the session — never from a
- * request body or query — which is what makes tenant isolation enforceable in one place.
+ * The authenticated caller. `userId` and `role` originate here, from the session and the user
+ * row — never from a request body or query — which is what keeps authorization enforceable in
+ * one place.
  */
 export type AuthContext = {
   userId: string;
-  organizationId: string;
   role: Role;
   ip: string | null;
 };
@@ -28,20 +28,12 @@ export class Authenticator {
     const session = await this.sessions.read(sessionId);
     if (!session) throw new UnauthorizedError('Session expired');
 
-    // Re-read the membership on every request: a revoked role or a disabled account must
-    // take effect immediately, not whenever the session happens to expire.
-    const membership = await this.uow.repos.memberships.findWithUser(
-      session.organizationId,
-      session.userId,
-    );
-    if (!membership || membership.user.status !== 'ACTIVE') throw new UnauthorizedError();
+    // Re-read the user on every request: a revoked role or a disabled account must take effect
+    // immediately, not whenever the session happens to expire.
+    const user = await this.uow.repos.users.findById(session.userId);
+    if (!user || user.status !== 'ACTIVE') throw new UnauthorizedError();
 
-    return {
-      userId: session.userId,
-      organizationId: session.organizationId,
-      role: membership.role,
-      ip,
-    };
+    return { userId: user.id, role: user.role, ip };
   }
 
   static assertRole(context: AuthContext, minimum: Role): void {

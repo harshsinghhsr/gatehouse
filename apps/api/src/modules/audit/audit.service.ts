@@ -4,7 +4,6 @@ import type { AuditRepository } from './audit.repository.js';
 
 /** Structurally satisfied by AuthContext, so callers pass the context they already hold. */
 export type AuditContext = {
-  organizationId: string;
   userId: string | null;
   ip: string | null;
 };
@@ -35,7 +34,6 @@ export class AuditService {
   async record(context: AuditContext, event: AuditEventInput, repos?: Repositories): Promise<void> {
     const repository: AuditRepository = (repos ?? this.uow.repos).audit;
     await repository.append({
-      organizationId: context.organizationId,
       actorUserId: context.userId,
       action: event.action,
       targetType: event.targetType,
@@ -45,10 +43,9 @@ export class AuditService {
     });
   }
 
-  async list(organizationId: string, query: AuditQuery): Promise<{ logs: AuditEntry[]; nextCursor: string | null }> {
+  async list(query: AuditQuery): Promise<{ logs: AuditEntry[]; nextCursor: string | null }> {
     // Fetch one extra row to learn whether another page exists, then drop it.
     const rows = await this.uow.repos.audit.list({
-      organizationId,
       action: query.action,
       cursor: query.cursor,
       limit: query.limit + 1,

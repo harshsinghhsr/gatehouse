@@ -37,12 +37,11 @@ test('readiness is 503 and names the failing dependency', async () => {
   await app.close();
 });
 
-test('every organization-scoped route requires a session', async () => {
+test('every authenticated route requires a session', async () => {
   const app = await buildServer(testContainer());
 
   for (const url of [
     '/api/me',
-    '/api/organizations',
     '/api/providers',
     '/api/models',
     '/api/developers',

@@ -2,7 +2,6 @@ import type { Db } from '../../infra/db/client.js';
 
 export type Team = {
   id: string;
-  organizationId: string;
   name: string;
   slug: string;
   litellmTeamId: string | null;
@@ -11,38 +10,37 @@ export type Team = {
 export type TeamMember = { id: string; name: string; email: string };
 
 export interface TeamRepository {
-  listByOrganization(organizationId: string): Promise<Array<Team & { memberCount: number }>>;
-  findInOrganization(id: string, organizationId: string): Promise<Team | null>;
-  listForUser(organizationId: string, userId: string): Promise<Team[]>;
+  list(): Promise<Array<Team & { memberCount: number }>>;
+  findById(id: string): Promise<Team | null>;
+  listForUser(userId: string): Promise<Team[]>;
   listMembers(teamId: string): Promise<TeamMember[]>;
   listMemberIds(teamId: string): Promise<string[]>;
-  create(input: { organizationId: string; name: string; slug: string; litellmTeamId: string | null }): Promise<Team>;
+  create(input: { name: string; slug: string; litellmTeamId: string | null }): Promise<Team>;
   delete(id: string): Promise<void>;
   addMember(teamId: string, userId: string): Promise<void>;
   removeMember(teamId: string, userId: string): Promise<void>;
 }
 
-const SELECT = { id: true, organizationId: true, name: true, slug: true, litellmTeamId: true } as const;
+const SELECT = { id: true, name: true, slug: true, litellmTeamId: true } as const;
 
 export class PrismaTeamRepository implements TeamRepository {
   constructor(private readonly db: Db) {}
 
-  async listByOrganization(organizationId: string) {
+  async list() {
     const rows = await this.db.team.findMany({
-      where: { organizationId },
       select: { ...SELECT, _count: { select: { members: true } } },
       orderBy: { createdAt: 'asc' },
     });
     return rows.map(({ _count, ...team }) => ({ ...team, memberCount: _count.members }));
   }
 
-  findInOrganization(id: string, organizationId: string): Promise<Team | null> {
-    return this.db.team.findFirst({ where: { id, organizationId }, select: SELECT });
+  findById(id: string): Promise<Team | null> {
+    return this.db.team.findUnique({ where: { id }, select: SELECT });
   }
 
-  listForUser(organizationId: string, userId: string): Promise<Team[]> {
+  listForUser(userId: string): Promise<Team[]> {
     return this.db.team.findMany({
-      where: { organizationId, members: { some: { userId } } },
+      where: { members: { some: { userId } } },
       select: SELECT,
       orderBy: { name: 'asc' },
     });
@@ -61,7 +59,7 @@ export class PrismaTeamRepository implements TeamRepository {
     return rows.map((row) => row.userId);
   }
 
-  create(input: { organizationId: string; name: string; slug: string; litellmTeamId: string | null }): Promise<Team> {
+  create(input: { name: string; slug: string; litellmTeamId: string | null }): Promise<Team> {
     return this.db.team.create({ data: input, select: SELECT });
   }
 

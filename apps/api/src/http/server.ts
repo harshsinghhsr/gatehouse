@@ -5,10 +5,10 @@ import rateLimit from '@fastify/rate-limit';
 import Fastify, { type FastifyBaseLogger, type FastifyInstance } from 'fastify';
 import type { AppContainer } from '../container.js';
 import { CrossOriginError } from '../core/errors.js';
+import { auditController } from '../modules/audit/audit.controller.js';
 import { authController } from '../modules/auth/auth.controller.js';
 import { developerController } from '../modules/developers/developer.controller.js';
 import { modelController } from '../modules/models/model.controller.js';
-import { organizationController } from '../modules/organizations/organization.controller.js';
 import { providerController } from '../modules/providers/provider.controller.js';
 import { teamController } from '../modules/teams/team.controller.js';
 import { usageController } from '../modules/usage/usage.controller.js';
@@ -59,7 +59,7 @@ export async function buildServer(container: AppContainer): Promise<FastifyInsta
   await app.register(healthController(container), { prefix: '/api' });
   for (const controller of [
     authController,
-    organizationController,
+    auditController,
     providerController,
     modelController,
     developerController,

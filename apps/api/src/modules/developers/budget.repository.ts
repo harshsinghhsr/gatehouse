@@ -3,7 +3,6 @@ import type { Db } from '../../infra/db/client.js';
 
 export type Budget = {
   id: string;
-  organizationId: string;
   userId: string | null;
   teamId: string | null;
   maxBudget: number;
@@ -18,10 +17,9 @@ export type BudgetWithHolder = Budget & {
 };
 
 export interface BudgetRepository {
-  findForUser(organizationId: string, userId: string): Promise<Budget | null>;
-  listByOrganization(organizationId: string): Promise<BudgetWithHolder[]>;
+  findForUser(userId: string): Promise<Budget | null>;
+  list(): Promise<BudgetWithHolder[]>;
   upsertForUser(
-    organizationId: string,
     userId: string,
     values: { maxBudget: number; period: BudgetPeriod; rpmLimit: number | null; tpmLimit: number | null },
   ): Promise<Budget>;
@@ -29,7 +27,6 @@ export interface BudgetRepository {
 
 const SELECT = {
   id: true,
-  organizationId: true,
   userId: true,
   teamId: true,
   maxBudget: true,
@@ -44,17 +41,16 @@ const toDomain = (row: Row): Budget => ({ ...row, maxBudget: Number(row.maxBudge
 export class PrismaBudgetRepository implements BudgetRepository {
   constructor(private readonly db: Db) {}
 
-  async findForUser(organizationId: string, userId: string): Promise<Budget | null> {
+  async findForUser(userId: string): Promise<Budget | null> {
     const row = await this.db.budget.findFirst({
-      where: { organizationId, userId, teamId: null },
+      where: { userId, teamId: null },
       select: SELECT,
     });
     return row ? toDomain(row) : null;
   }
 
-  async listByOrganization(organizationId: string): Promise<BudgetWithHolder[]> {
+  async list(): Promise<BudgetWithHolder[]> {
     const rows = await this.db.budget.findMany({
-      where: { organizationId },
       select: {
         ...SELECT,
         user: { select: { id: true, name: true, email: true } },
@@ -69,18 +65,17 @@ export class PrismaBudgetRepository implements BudgetRepository {
    * treats as never equal, so the unique index cannot be targeted.
    */
   async upsertForUser(
-    organizationId: string,
     userId: string,
     values: { maxBudget: number; period: BudgetPeriod; rpmLimit: number | null; tpmLimit: number | null },
   ): Promise<Budget> {
     const existing = await this.db.budget.findFirst({
-      where: { organizationId, userId, teamId: null },
+      where: { userId, teamId: null },
       select: { id: true },
     });
 
     const row = existing
       ? await this.db.budget.update({ where: { id: existing.id }, data: values, select: SELECT })
-      : await this.db.budget.create({ data: { organizationId, userId, ...values }, select: SELECT });
+      : await this.db.budget.create({ data: { userId, ...values }, select: SELECT });
     return toDomain(row);
   }
 }

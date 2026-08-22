@@ -112,29 +112,20 @@ export class LiteLlmGateway implements LlmGateway {
     return { spend: response.info.spend ?? 0, maxBudget: response.info.max_budget ?? null };
   }
 
-  // --- tenancy mirror -------------------------------------------------------
+  // --- identity mirror ------------------------------------------------------
 
-  async createOrganization(name: string): Promise<string> {
-    const response = await this.call<wire.NewOrganizationResponse>('POST', '/organization/new', {
-      organization_alias: name,
-    });
-    return response.organization_id;
-  }
-
-  async createUser(email: string, organizationId?: string): Promise<string> {
+  async createUser(email: string): Promise<string> {
     const response = await this.call<wire.NewUserResponse>('POST', '/user/new', {
       user_email: email,
       user_role: 'internal_user',
       auto_create_key: false,
-      ...(organizationId ? { organizations: [organizationId] } : {}),
     });
     return response.user_id;
   }
 
-  async createTeam(name: string, organizationId?: string): Promise<string> {
+  async createTeam(name: string): Promise<string> {
     const response = await this.call<wire.NewTeamResponse>('POST', '/team/new', {
       team_alias: name,
-      ...(organizationId ? { organization_id: organizationId } : {}),
     });
     return response.team_id;
   }
@@ -185,14 +176,12 @@ export class LiteLlmGateway implements LlmGateway {
 
   // --- usage ----------------------------------------------------------------
 
-  async organizationUsage(organizationId: string, from: string, to: string): Promise<UsageReport> {
-    const query = new URLSearchParams({
-      start_date: from,
-      end_date: to,
-      organization_id: organizationId,
-      page_size: '100',
-    });
-    return toUsageReport(await this.call<wire.DailyActivityResponse>('GET', `/organization/daily/activity?${query}`));
+  async instanceUsage(from: string, to: string): Promise<UsageReport> {
+    // No user_id: under the master key this returns every user's activity, which in a
+    // single-tenant deployment is the whole instance. /gateway/daily/activity looks like the
+    // better fit by name but reports request counts by route, with no spend dimension.
+    const query = new URLSearchParams({ start_date: from, end_date: to, page_size: '100' });
+    return toUsageReport(await this.call<wire.DailyActivityResponse>('GET', `/user/daily/activity?${query}`));
   }
 
   async userUsage(userId: string, from: string, to: string): Promise<UsageReport> {
@@ -211,9 +200,9 @@ export class LiteLlmGateway implements LlmGateway {
 
 /**
  * LiteLLM checks the requested model against `models` BEFORE resolving `aliases`, so a key
- * limited to "acme/gpt-5" would reject a developer asking for "gpt-5". Both names are therefore
+ * limited to "azure/gpt-5" would reject a developer asking for "gpt-5". Both names are therefore
  * allowed and the alias performs the routing. Safe only because every model this control plane
- * registers is namespaced by organization slug.
+ * registers is namespaced by provider slug.
  */
 function toKeyPayload(spec: KeySpec): Record<string, unknown> {
   const publicNames = Object.keys(spec.aliases);

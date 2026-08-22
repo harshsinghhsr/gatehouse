@@ -22,19 +22,15 @@ export class KeyService {
   ) {}
 
   async issue(context: AuthContext, userId: string): Promise<IssuedKey> {
-    const membership = await this.access.requireMembership(context.organizationId, userId);
-    if (membership.user.status !== 'ACTIVE') throw new ConflictError('This developer is disabled');
+    const user = await this.access.requireUser(userId);
+    if (user.status !== 'ACTIVE') throw new ConflictError('This developer is disabled');
 
-    const organization = await this.uow.repos.organizations.findById(context.organizationId);
-    if (!organization) throw new NotFoundError('Organization');
-
-    const alias = keyAlias(organization.slug, membership.user.email);
-    const spec = await this.access.buildKeySpec(context.organizationId, userId, alias);
+    const alias = keyAlias(user.email);
+    const spec = await this.access.buildKeySpec(userId, alias);
     const issued = await this.gateway.issueKey(spec);
 
     const reference = await this.uow.transaction(async (repos) => {
       const created = await repos.keys.create({
-        organizationId: context.organizationId,
         userId,
         keyAlias: alias,
         litellmKeyId: issued.keyId,
@@ -47,7 +43,7 @@ export class KeyService {
           action: 'API_KEY_CREATED',
           targetType: 'key',
           targetId: created.id,
-          metadata: { keyAlias: alias, developer: membership.user.email },
+          metadata: { keyAlias: alias, developer: user.email },
         },
         repos,
       );
@@ -62,7 +58,7 @@ export class KeyService {
    * without a working credential if the second call fails.
    */
   async rotate(context: AuthContext, userId: string, keyId: string): Promise<IssuedKey> {
-    const existing = await this.uow.repos.keys.findInOrganization(keyId, context.organizationId);
+    const existing = await this.uow.repos.keys.findById(keyId);
     if (!existing || existing.userId !== userId) throw new NotFoundError('Key');
     if (existing.status !== 'ACTIVE') throw new ConflictError('This key is no longer active');
 
@@ -87,7 +83,7 @@ export class KeyService {
   }
 
   async revoke(context: AuthContext, userId: string, keyId: string): Promise<void> {
-    const key = await this.uow.repos.keys.findInOrganization(keyId, context.organizationId);
+    const key = await this.uow.repos.keys.findById(keyId);
     if (!key || key.userId !== userId) throw new NotFoundError('Key');
     if (key.status !== 'ACTIVE') return;
 
@@ -108,8 +104,8 @@ export class KeyService {
   }
 
   /** Used when a developer is disabled or removed: access must stop at once. */
-  async revokeAllForUser(context: AuthContext, userId: string): Promise<number> {
-    const keys = await this.uow.repos.keys.listActiveForUser(context.organizationId, userId);
+  async revokeAllForUser(userId: string): Promise<number> {
+    const keys = await this.uow.repos.keys.listActiveForUser(userId);
     for (const key of keys) {
       await this.gateway.revokeKeyByAlias(key.keyAlias);
       await this.uow.repos.keys.markInactive(key.id, 'REVOKED', this.clock.now());
@@ -119,9 +115,9 @@ export class KeyService {
 }
 
 /** Unique forever: the alias is the handle we revoke by, so it must never be reused. */
-function keyAlias(organizationSlug: string, email: string): string {
+function keyAlias(email: string): string {
   const local = email.split('@')[0]?.replace(/[^a-zA-Z0-9._-]/g, '') || 'dev';
-  return `${organizationSlug}--${local}--${randomUUID().slice(0, 8)}`;
+  return `${local}--${randomUUID().slice(0, 8)}`;
 }
 
 /** Enough to recognize a key in a list, far too little to use one. */

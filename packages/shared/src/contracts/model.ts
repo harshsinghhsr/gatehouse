@@ -22,7 +22,7 @@ export const modelSchema = z.object({
   id: z.string(),
   publicModelName: z.string(),
   providerModelName: z.string(),
-  /** Namespaced name inside the gateway: "{orgSlug}/{publicModelName}". */
+  /** Namespaced name inside the gateway: "{providerSlug}/{publicModelName}". */
   gatewayModelName: z.string(),
   enabled: z.boolean(),
   provider: z.object({ id: z.string(), name: z.string(), type: providerTypeSchema }),

@@ -54,9 +54,6 @@ export const authController =
 
     app.get('/me', { preHandler: guards('MEMBER') }, async (request) => {
       const context = authOf(request);
-      return services.auth.describe(
-        { userId: context.userId, organizationId: context.organizationId },
-        context.role,
-      );
+      return services.auth.describe({ userId: context.userId }, context.role);
     });
   };
