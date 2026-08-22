@@ -187,10 +187,12 @@ trusted organization; a pre-approval layer is a feature to add later, not a guar
 
 - `test/support/fakes.ts`: drop the organization and membership fakes; add
   `repos.teams.findMember`.
-- `test/unit/security.test.ts` is rewritten. Its cross-tenant isolation assertions no longer
-  describe anything real and are replaced by the boundary that does exist: a `LEAD` of team A
-  receives 403 on team B's members, 403 on `/providers`, and 403 attempting to promote anyone to
-  `LEAD`.
+- `test/unit/security.test.ts` needs only a one-line change: it asserts password hashing, audit
+  scrubbing, and the SSRF host guard, and its sole organization reference is the
+  `{ organizationId: 'org-1', ... }` audit-context literal at line 45.
+- New `test/unit/team-access.test.ts` covers the team-lead boundary, which nothing tests today:
+  a `LEAD` of team A is refused on team B, refused on promoting anyone to `LEAD`, refused on
+  removing an existing `LEAD`, and allowed on their own team's members and models.
 - `test/unit/key.service.test.ts`, `test/http/server.test.ts`,
   `test/integration/acceptance.test.ts`: updated signatures; the acceptance flow additionally
   asserts that `instanceUsage` returns non-empty data after a real request.
