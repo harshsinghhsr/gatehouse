@@ -1,5 +1,6 @@
 import type { ProviderType } from '@gatehouse/shared';
 import type { Db } from '../../infra/db/client.js';
+import { onUniqueConflict } from '../../infra/db/conflicts.js';
 
 export type ProviderModel = {
   id: string;
@@ -41,6 +42,16 @@ const SELECT = {
   litellmModelId: true,
   enabled: true,
   provider: { select: { id: true, name: true, type: true, litellmCredentialName: true } },
+} as const;
+
+/**
+ * Both uniques describe the same collision from two sides: the gateway name is built from the
+ * provider slug and the public name, so a duplicate public name under one provider trips
+ * whichever index Postgres reaches first.
+ */
+const MODEL_NAME_TAKEN = {
+  publicModelName: 'This provider already publishes a model with this public name',
+  litellmModelName: 'This provider already publishes a model with this public name',
 } as const;
 
 type Row = Omit<ProviderModel, 'gatewayModelName'> & { litellmModelName: string };
@@ -92,15 +103,21 @@ export class PrismaProviderModelRepository implements ProviderModelRepository {
   }): Promise<ProviderModel> {
     const { gatewayModelName, ...rest } = input;
     return toDomain(
-      await this.db.providerModel.create({
-        data: { ...rest, litellmModelName: gatewayModelName },
-        select: SELECT,
-      }),
+      await onUniqueConflict(MODEL_NAME_TAKEN, () =>
+        this.db.providerModel.create({
+          data: { ...rest, litellmModelName: gatewayModelName },
+          select: SELECT,
+        }),
+      ),
     );
   }
 
   async update(id: string, patch: { enabled?: boolean; litellmModelId?: string | null }): Promise<ProviderModel> {
-    return toDomain(await this.db.providerModel.update({ where: { id }, data: patch, select: SELECT }));
+    return toDomain(
+      await onUniqueConflict(MODEL_NAME_TAKEN, () =>
+        this.db.providerModel.update({ where: { id }, data: patch, select: SELECT }),
+      ),
+    );
   }
 
   async delete(id: string): Promise<void> {

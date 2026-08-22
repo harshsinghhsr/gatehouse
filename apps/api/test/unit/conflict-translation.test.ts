@@ -55,6 +55,37 @@ test('an index name is split back into the column it protects', async () => {
   );
 });
 
+test('a composite index reports every column, and the labelled one wins', async () => {
+  // ProviderModel's @@unique([providerId, publicModelName]): providerId is deliberately
+  // unlabelled, so the message names the half the caller actually typed.
+  await assert.rejects(
+    () =>
+      onUniqueConflict({ publicModelName: 'This provider already publishes that model' }, () =>
+        Promise.reject(p2002ViaAdapter(['providerId', 'publicModelName'])),
+      ),
+    (error: unknown) => {
+      assert.ok(error instanceof ConflictError);
+      assert.equal(error.message, 'This provider already publishes that model');
+      return true;
+    },
+  );
+});
+
+test('a mixed-case column arrives quoted and is still matched', async () => {
+  // Postgres spells camelCase identifiers with quotes, and the driver reports them verbatim.
+  await assert.rejects(
+    () =>
+      onUniqueConflict({ litellmModelName: 'This provider already publishes that model' }, () =>
+        Promise.reject(p2002ViaAdapter(['"litellmModelName"'])),
+      ),
+    (error: unknown) => {
+      assert.ok(error instanceof ConflictError);
+      assert.equal(error.message, 'This provider already publishes that model');
+      return true;
+    },
+  );
+});
+
 test('an unlabelled column still conflicts rather than leaking a 500', async () => {
   await assert.rejects(
     () => onUniqueConflict({ email: 'taken' }, () => Promise.reject(p2002(['litellmUserId']))),

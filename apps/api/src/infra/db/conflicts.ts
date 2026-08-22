@@ -27,8 +27,10 @@ export async function onUniqueConflict<T>(
  *
  * Two shapes, because Prisma reports the violation differently depending on how it reached the
  * database: through the pg driver adapter the columns arrive under `driverAdapterError`, while
- * `meta.target` is the classic form. An index name ("User_email_key") is split back into parts
- * so it still matches a column label.
+ * `meta.target` is the classic form. Two more wrinkles, both observed against Postgres: a
+ * mixed-case column comes back quoted ("\"litellmModelName\"") because that is how the identifier
+ * is spelled in SQL, and the violation is sometimes reported as an index name rather than a
+ * column. Quotes are stripped and index names split, so either still matches a column label.
  */
 function uniqueViolation(error: unknown): string[] | null {
   const candidate = error as
@@ -45,5 +47,7 @@ function uniqueViolation(error: unknown): string[] | null {
     .filter(Boolean)
     .map(String);
 
-  return named.flatMap((entry) => [entry, ...entry.split('_')]);
+  return named
+    .map((entry) => entry.replaceAll('"', ''))
+    .flatMap((entry) => [entry, ...entry.split('_')]);
 }
