@@ -20,7 +20,7 @@ const configSchema = z.object({
   webOrigin: z.string().url(),
 
   secretsBackend: z.enum(['file', 'aws']).default('file'),
-  /** Set to a LocalStack endpoint in development; unset in production, where the real AWS is used. */
+  /** Set to a floci endpoint in development; unset in production, where the real AWS is used. */
   awsEndpointUrl: z.string().url().optional(),
   awsRegion: z.string().default('us-east-1'),
   secretsFile: z.string().default('/tmp/gatehouse-secrets.json'),

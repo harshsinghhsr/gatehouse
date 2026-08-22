@@ -9,24 +9,24 @@ import { hostUrl } from '../support/stack-env.js';
 
 /**
  * One contract, two implementations. The file store runs everywhere; the AWS store runs against
- * LocalStack when it is up, so the production code path is exercised for real rather than mocked.
+ * floci when it is up, so the production code path is exercised for real rather than mocked.
  *
- *   docker compose --profile aws up -d localstack
+ *   docker compose --profile aws up -d floci
  *   INTEGRATION=1 npm run -w apps/api test
  */
 
-const LOCALSTACK_URL = hostUrl(process.env.AWS_ENDPOINT_URL || 'http://localhost:4566');
+const FLOCI_URL = hostUrl(process.env.AWS_ENDPOINT_URL || 'http://localhost:4566');
 
-// LocalStack accepts any credentials, but the SDK still insists on resolving some. In production
+// floci accepts any credentials, but the SDK still insists on resolving some. In production
 // these are absent and the task role supplies them instead.
 process.env.AWS_ACCESS_KEY_ID ||= 'test';
 process.env.AWS_SECRET_ACCESS_KEY ||= 'test';
 process.env.AWS_REGION ||= 'us-east-1';
 
-async function localstackIsUp(): Promise<boolean> {
+async function flociIsUp(): Promise<boolean> {
   if (process.env.INTEGRATION !== '1') return false;
   try {
-    const response = await fetch(`${LOCALSTACK_URL}/_localstack/health`, {
+    const response = await fetch(`${FLOCI_URL}/_localstack/health`, {
       signal: AbortSignal.timeout(2000),
     });
     if (!response.ok) return false;
@@ -85,9 +85,9 @@ function contractTests(name: string, create: () => SecretStore, skip: boolean | 
 
 contractTests('file', () => new FileSecretStore(join(mkdtempSync(join(tmpdir(), 'secrets-')), 'store.json')), false);
 
-const localstackDown = !(await localstackIsUp());
+const flociDown = !(await flociIsUp());
 contractTests(
-  'AWS (LocalStack)',
-  () => new AwsSecretStore({ endpoint: LOCALSTACK_URL, region: 'us-east-1' }),
-  localstackDown && 'LocalStack is not running (docker compose --profile aws up -d localstack)',
+  'AWS (floci)',
+  () => new AwsSecretStore({ endpoint: FLOCI_URL, region: 'us-east-1' }),
+  flociDown && 'floci is not running (docker compose --profile aws up -d floci)',
 );

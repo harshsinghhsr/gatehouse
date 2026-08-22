@@ -49,7 +49,7 @@ export class FileSecretStore implements SecretStore {
 
 /**
  * Production. Reached through the task role — there are no static AWS credentials anywhere.
- * In development the same code runs against LocalStack by setting an endpoint override, so the
+ * In development the same code runs against floci by setting an endpoint override, so the
  * AWS path is exercised for real rather than mocked away.
  */
 export class AwsSecretStore implements SecretStore {
