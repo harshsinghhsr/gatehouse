@@ -34,10 +34,7 @@ export class ForbiddenError extends AppError {
   readonly code = 'forbidden';
 }
 
-/**
- * Also used when a resource exists but belongs to another organization: telling a caller
- * "forbidden" would confirm the resource exists.
- */
+/** Preferred over 403 when the caller may not learn a record exists: existence is not disclosed. */
 export class NotFoundError extends AppError {
   readonly status = 404;
   readonly code = 'not_found';

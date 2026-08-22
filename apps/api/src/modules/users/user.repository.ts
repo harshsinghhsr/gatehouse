@@ -1,5 +1,6 @@
 import type { Role, UserStatus } from '@gatehouse/shared';
 import type { Db } from '../../infra/db/client.js';
+import { onUniqueConflict } from '../../infra/db/conflicts.js';
 
 export type User = {
   id: string;
@@ -58,10 +59,12 @@ export class PrismaUserRepository implements UserRepository {
   }
 
   create(input: { email: string; name: string; passwordHash: string | null; role: Role }): Promise<User> {
-    return this.db.user.create({
-      data: { ...input, email: input.email.toLowerCase() },
-      select: SELECT,
-    });
+    return onUniqueConflict({ email: 'A user with this email already exists' }, () =>
+      this.db.user.create({
+        data: { ...input, email: input.email.toLowerCase() },
+        select: SELECT,
+      }),
+    );
   }
 
   async setStatus(id: string, status: UserStatus): Promise<void> {

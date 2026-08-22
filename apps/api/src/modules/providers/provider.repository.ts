@@ -1,5 +1,6 @@
 import type { ProviderStatus, ProviderType } from '@gatehouse/shared';
 import type { Db } from '../../infra/db/client.js';
+import { onUniqueConflict } from '../../infra/db/conflicts.js';
 
 export type Provider = {
   id: string;
@@ -47,6 +48,12 @@ const SELECT = {
   lastTestError: true,
 } as const;
 
+/** The slug is derived from the name, so both collisions are really one thing to the caller. */
+const PROVIDER_NAME_TAKEN = {
+  name: 'A provider with this name already exists',
+  slug: 'Another provider already uses a name that resolves to the same slug',
+} as const;
+
 type Row = { config: unknown } & Omit<Provider, 'config'>;
 const toDomain = (row: Row): Provider => ({ ...row, config: (row.config ?? {}) as Record<string, string> });
 
@@ -74,11 +81,19 @@ export class PrismaProviderRepository implements ProviderRepository {
     secretRef: string;
     config: Record<string, string>;
   }): Promise<Provider> {
-    return toDomain(await this.db.provider.create({ data: input, select: SELECT }));
+    return toDomain(
+      await onUniqueConflict(PROVIDER_NAME_TAKEN, () =>
+        this.db.provider.create({ data: input, select: SELECT }),
+      ),
+    );
   }
 
   async update(id: string, patch: Parameters<ProviderRepository['update']>[1]): Promise<Provider> {
-    return toDomain(await this.db.provider.update({ where: { id }, data: patch, select: SELECT }));
+    return toDomain(
+      await onUniqueConflict(PROVIDER_NAME_TAKEN, () =>
+        this.db.provider.update({ where: { id }, data: patch, select: SELECT }),
+      ),
+    );
   }
 
   async delete(id: string): Promise<void> {

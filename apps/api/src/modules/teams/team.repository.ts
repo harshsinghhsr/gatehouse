@@ -1,4 +1,5 @@
 import type { Db } from '../../infra/db/client.js';
+import { onUniqueConflict } from '../../infra/db/conflicts.js';
 
 export type Team = {
   id: string;
@@ -60,7 +61,10 @@ export class PrismaTeamRepository implements TeamRepository {
   }
 
   create(input: { name: string; slug: string; litellmTeamId: string | null }): Promise<Team> {
-    return this.db.team.create({ data: input, select: SELECT });
+    return onUniqueConflict(
+      { slug: 'Another team already uses a name that resolves to the same slug' },
+      () => this.db.team.create({ data: input, select: SELECT }),
+    );
   }
 
   async delete(id: string): Promise<void> {

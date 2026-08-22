@@ -121,6 +121,10 @@ export class DeveloperService {
     if (request.role && context.role !== 'OWNER') {
       throw new ForbiddenError('Only an owner can change roles');
     }
+    // Disabling or demoting the last owner locks everyone out of role management for good.
+    if (request.status === 'DISABLED' || (request.role && request.role !== 'OWNER')) {
+      await this.assertNotLastOwner(userId);
+    }
 
     if (request.status) {
       await this.uow.repos.users.setStatus(userId, request.status);
@@ -169,6 +173,7 @@ export class DeveloperService {
   async remove(context: AuthContext, userId: string): Promise<void> {
     if (userId === context.userId) throw new ValidationError('You cannot remove yourself');
     await this.access.requireUser(userId);
+    await this.assertNotLastOwner(userId);
 
     const revoked = await this.keys.revokeAllForUser(userId);
     await this.uow.transaction(async (repos) => {
@@ -184,6 +189,19 @@ export class DeveloperService {
         repos,
       );
     });
+  }
+
+  /**
+   * The instance keeps at least one active owner. Deleting or disabling the last one leaves
+   * nobody able to grant the role back, and the account row is now really deleted.
+   */
+  private async assertNotLastOwner(userId: string): Promise<void> {
+    const owners = (await this.uow.repos.users.list()).filter(
+      (user) => user.role === 'OWNER' && user.status === 'ACTIVE',
+    );
+    if (owners.length === 1 && owners[0]?.id === userId) {
+      throw new ValidationError('This is the last active owner. Make someone else an owner first.');
+    }
   }
 
   /** Full replacement: the request states the complete set of models for this developer. */
