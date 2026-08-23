@@ -94,7 +94,9 @@ const MOCK_RESPONSE = 'This is a mock response from the Gatehouse development pr
  * request is answered by the gateway itself: no vendor is contacted and no credential is needed,
  * while spend, tokens and request counts are metered exactly as they are for real traffic.
  * LiteLLM prices the mocked tokens from its own table, so `providerModelName` must be a model it
- * knows — "gpt-4o-mini", "claude-3-5-sonnet-20241022" — or the spend comes out zero.
+ * knows, written the way LiteLLM names it — "openai/gpt-4o-mini",
+ * "anthropic/claude-3-5-sonnet-20241022". An unknown name meters at zero and an unattributable
+ * one is refused when the deployment is registered.
  */
 const mock: ProviderAdapter = {
   displayName: 'Mock (development)',

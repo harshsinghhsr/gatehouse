@@ -76,11 +76,12 @@ async function ensure<T>(
   return api.post<T>(createPath, body);
 }
 
-type Provider = { id: string; name: string; status: string };
+type Provider = { id: string; name: string; type: string; status: string };
 type Model = { id: string; publicModelName: string; provider: { id: string } };
 type Developer = { id: string; email: string; name: string; role: string; status: string; activeKeys: number };
 type Team = { id: string; name: string; viewerRole: string | null };
 type Key = { id: string; status: string };
+type DeveloperUsage = { id: string; spend: number };
 
 const notes: string[] = [];
 const accounts: Array<[string, string, string]> = [];
@@ -103,8 +104,17 @@ async function main(): Promise<void> {
 
   // 2. Providers. Creation verifies the credential against the real provider before writing
   //    anything, so a placeholder key cannot produce a provider row. Supply real keys through
-  //    the environment to get the full catalogue; without them the seed skips this section and
-  //    says so, rather than reaching around the API and inserting rows itself.
+  //    the environment to get the real catalogue; without them each provider falls back to the
+  //    development MOCK type, which the API only offers when ENABLE_MOCK_PROVIDER is set. Its
+  //    models answer from inside LiteLLM — no vendor, no key — but the tokens are counted and
+  //    priced for real, which is what gives the dashboard something to show.
+  const mockAvailable = (await owner.get<Array<{ type: string }>>('/provider-types')).some(
+    (type) => type.type === 'MOCK',
+  );
+  if (!mockAvailable) {
+    notes.push('ENABLE_MOCK_PROVIDER is not set, so there is no traffic to report. See README.');
+  }
+
   const ensureProvider = async (
     name: string,
     type: string,
@@ -114,12 +124,16 @@ async function main(): Promise<void> {
   ): Promise<Provider | null> => {
     const existing = (await owner.get<Provider[]>('/providers')).find((p) => p.name === name);
     if (existing) return existing;
-    if (!apiKey) {
+    if (!apiKey && !mockAvailable) {
       notes.push(`Skipped provider "${name}": set ${envVar} to a working key to seed it.`);
       return null;
     }
+    const body = apiKey
+      ? { name, type, credentials: { apiKey }, config }
+      : { name, type: 'MOCK', credentials: {} };
+    if (!apiKey) notes.push(`"${name}" is a mock provider: set ${envVar} to seed the real one.`);
     try {
-      return await owner.post<Provider>('/providers', { name, type, credentials: { apiKey }, config });
+      return await owner.post<Provider>('/providers', body);
     } catch (error) {
       notes.push(`Provider "${name}" was refused: ${(error as Error).message}`);
       return null;
@@ -152,26 +166,42 @@ async function main(): Promise<void> {
   // 3. Models. "chat-default" is published by two providers on purpose: the gateway name is
   //    namespaced per provider, so the composite unique holds and the namespacing is visible.
   const catalogue = new Map<string, string>();
-  const model = async (provider: Provider | null, publicModelName: string, providerModelName: string) => {
+  /** Public names served by a mock provider, and so safe (and free) to send traffic to. */
+  const mocked = new Set<string>();
+  /**
+   * `whenMocked` is the model LiteLLM is asked for behind a mock provider. LiteLLM prices the
+   * mocked token counts from its own table, so it has to be a model that table knows, written
+   * "provider/model": a deployment name meters at zero, and an unprefixed name LiteLLM cannot
+   * attribute is refused outright.
+   */
+  const model = async (
+    provider: Provider | null,
+    publicModelName: string,
+    providerModelName: string,
+    whenMocked = providerModelName,
+  ) => {
     if (!provider) return;
+    const upstream = provider.type === 'MOCK' ? whenMocked : providerModelName;
     const found = await ensure<Model>(
       owner,
       '/models',
       (m) => m.publicModelName === publicModelName && m.provider.id === provider.id,
       '/models',
-      { providerId: provider.id, publicModelName, providerModelName },
+      { providerId: provider.id, publicModelName, providerModelName: upstream },
     );
     catalogue.set(`${provider.name}/${publicModelName}`, found.id);
+    if (provider.type === 'MOCK') mocked.add(publicModelName);
   };
 
-  await model(openai, 'gpt-4o', 'gpt-4o');
-  await model(openai, 'gpt-4o-mini', 'gpt-4o-mini');
-  await model(openai, 'chat-default', 'gpt-4o');
-  await model(openai, 'gpt-3.5-turbo', 'gpt-3.5-turbo');
-  await model(anthropic, 'claude-sonnet-4-5', 'claude-sonnet-4-5-20250929');
-  await model(anthropic, 'claude-haiku-4-5', 'claude-haiku-4-5-20251001');
-  await model(anthropic, 'chat-default', 'claude-sonnet-4-5-20250929');
-  await model(azure, 'gpt-4o-eu', 'gpt-4o-eu-deployment');
+  await model(openai, 'gpt-4o', 'gpt-4o', 'openai/gpt-4o');
+  await model(openai, 'o1-pro', 'o1-pro', 'openai/o1-pro');
+  await model(openai, 'gpt-4o-mini', 'gpt-4o-mini', 'openai/gpt-4o-mini');
+  await model(openai, 'chat-default', 'gpt-4o', 'openai/gpt-4o');
+  await model(openai, 'gpt-3.5-turbo', 'gpt-3.5-turbo', 'openai/gpt-3.5-turbo');
+  await model(anthropic, 'claude-sonnet-4-5', 'claude-sonnet-4-5-20250929', 'anthropic/claude-3-5-sonnet-20241022');
+  await model(anthropic, 'claude-haiku-4-5', 'claude-haiku-4-5-20251001', 'anthropic/claude-3-5-haiku-20241022');
+  await model(anthropic, 'chat-default', 'claude-sonnet-4-5-20250929', 'anthropic/claude-3-5-sonnet-20241022');
+  await model(azure, 'gpt-4o-eu', 'gpt-4o-eu-deployment', 'openai/gpt-4o');
 
   const legacy = catalogue.get('OpenAI Production/gpt-3.5-turbo');
   if (legacy) await owner.patch(`/models/${legacy}`, { enabled: false });
@@ -240,8 +270,18 @@ async function main(): Promise<void> {
   // Billing gets no grants.
 
   // 6. Model access: direct, team-only, both, and nothing.
-  await grant(`/developers/${direct.id}/models`, 'OpenAI Production/gpt-4o', 'Anthropic Production/claude-sonnet-4-5');
-  await grant(`/developers/${both.id}/models`, 'OpenAI Production/gpt-4o', 'OpenAI Production/chat-default');
+  await grant(
+    `/developers/${direct.id}/models`,
+    'OpenAI Production/gpt-4o',
+    'OpenAI Production/o1-pro',
+    'Anthropic Production/claude-sonnet-4-5',
+  );
+  await grant(
+    `/developers/${both.id}/models`,
+    'OpenAI Production/gpt-4o',
+    'OpenAI Production/o1-pro',
+    'OpenAI Production/chat-default',
+  );
   await grant(`/developers/${disabled.id}/models`, 'OpenAI Production/gpt-4o-mini');
   await grant(`/developers/${revoked.id}/models`, 'Anthropic Production/claude-sonnet-4-5');
   // viaTeam gets Research's grants; `none` gets nothing at all.
@@ -278,7 +318,88 @@ async function main(): Promise<void> {
   // Issued before disabling on purpose: disabling revokes them, leaving visible key history.
   if ((await keyCount(disabled.id)) === 0) await issue(disabled.id, 1);
 
-  // 9. Statuses last, because disabling revokes keys and blocks further issuance.
+  // 9. Traffic, so the dashboard has spend, tokens and a distribution to draw. A mock model is
+  //    answered inside LiteLLM, so nothing is sent to a vendor and nothing is charged — but the
+  //    tokens are counted and priced exactly as real ones are. Only mock models are called:
+  //    driving a real provider's key here would spend the operator's money.
+  const { openai: endpoint } = await owner.get<{ openai: { baseUrl: string } }>('/connect');
+
+  // A mocked answer is metered at a fixed 10 prompt / 20 completion tokens whatever is sent, so
+  // what a developer spends is decided by how many calls they make and how dear the model is.
+  const call = async (key: string, model: string): Promise<number> => {
+    const response = await fetch(`${endpoint.baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ model, messages: [{ role: 'user', content: 'Summarise these notes.' }] }),
+    });
+    if (!response.ok) {
+      throw new Error(`${model} answered ${response.status}: ${(await response.text()).slice(0, 200)}`);
+    }
+    // LiteLLM priced this request; taking its number back off the header is the only way to know
+    // what a call cost without recomputing a price here, which is not ours to do.
+    return Number(response.headers.get('x-litellm-response-cost') ?? 0);
+  };
+
+  /**
+   * A key's plaintext is returned exactly once, and the keys issued above are long gone, so the
+   * traffic runs on a key of its own that is revoked as soon as it is finished. Re-running the
+   * seed therefore never leaves a usable credential lying around.
+   */
+  const traffic = async (person: Developer, plan: Array<[model: string, calls: number]>): Promise<number> => {
+    const usable = plan.filter(([model]) => mocked.has(model));
+    if (usable.length === 0) return 0;
+
+    let cost = 0;
+    const key = await owner.post<{ id: string; key: string }>(`/developers/${person.id}/keys`);
+    try {
+      for (const [model, calls] of usable) {
+        for (let index = 0; index < calls; index += 1) cost += await call(key.key, model);
+      }
+    } catch (error) {
+      notes.push(`Traffic for ${person.email} stopped early: ${(error as Error).message}`);
+    } finally {
+      await owner.post(`/developers/${person.id}/keys/${key.id}/revoke`);
+    }
+    return cost;
+  };
+
+  // Bianca is the developer whose meter should read close to full, so her ceiling is set from
+  // what she actually spends. Two things have to happen before the traffic runs: the ceiling the
+  // last run left behind is enforced by the gateway and would refuse this run's calls, and her
+  // spend so far has to be read while it still excludes them — the gateway aggregates its daily
+  // figures behind the request, so reading straight afterwards would miss what was just sent.
+  await owner.patch(`/developers/${both.id}`, { budget: { maxBudget: 1000, period: 'DAILY' } });
+  const today = new Date().toISOString().slice(0, 10);
+  const spentBefore =
+    (await owner.get<DeveloperUsage[]>(`/usage/developers?from=${today}&to=${today}`)).find(
+      (row) => row.id === both.id,
+    )?.spend ?? 0;
+
+  await traffic(direct, [
+    ['o1-pro', 12],
+    ['gpt-4o', 8],
+    ['claude-sonnet-4-5', 4],
+  ]);
+  const biancaSpent = await traffic(both, [
+    ['o1-pro', 5],
+    ['chat-default', 6],
+  ]);
+  await traffic(member, [
+    ['gpt-4o', 6],
+    ['claude-haiku-4-5', 3],
+  ]);
+  await traffic(viaTeam, [['gpt-4o-mini', 8]]);
+
+  // A DAILY budget covers the whole day, so it is what she had already spent plus what this run
+  // cost her. Sitting at 85% of the ceiling is what makes the meter worth looking at.
+  const spentToday = spentBefore + biancaSpent;
+  if (spentToday > 0) {
+    await owner.patch(`/developers/${both.id}`, {
+      budget: { maxBudget: Number((spentToday / 0.85).toFixed(4)), period: 'DAILY' },
+    });
+  }
+
+  // 10. Statuses last, because disabling revokes keys and blocks further issuance.
   await owner.patch(`/developers/${secondOwner.id}`, { role: 'OWNER' });
   for (const person of [disabled, disabledAdmin, secondOwner]) {
     await owner.patch(`/developers/${person.id}`, { status: 'DISABLED' });
@@ -291,13 +412,22 @@ async function report(owner: Client): Promise<void> {
   const [developers, teams, usage] = await Promise.all([
     owner.get<Developer[]>('/developers'),
     owner.get<Team[]>('/teams'),
-    owner.get<{ spend: number; requests: number; activeDevelopers: number; activeModels: number }>('/usage'),
+    owner.get<{
+      spend: number;
+      requests: number;
+      inputTokens: number;
+      outputTokens: number;
+      activeModels: number;
+    }>('/usage'),
   ]);
   const models = await owner.get<Model[]>('/models');
   const providers = await owner.get<Provider[]>('/providers');
 
   console.log(`\nProviders ${providers.length} · models ${models.length} · developers ${developers.length} · teams ${teams.length}`);
-  console.log(`Usage: spend ${usage.spend}, requests ${usage.requests}, active models ${usage.activeModels}`);
+  console.log(
+    `Usage: spend ${usage.spend}, requests ${usage.requests}, ` +
+      `tokens ${usage.inputTokens + usage.outputTokens}, active models ${usage.activeModels}`,
+  );
   console.log(`\nEvery account below uses the password: ${PASSWORD}\n`);
 
   const width = Math.max(...accounts.map(([email]) => email.length));
