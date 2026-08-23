@@ -8,8 +8,8 @@ enforced, what was found and fixed, and what is deliberately still open.
 | Control | Where |
 |---|---|
 | Passwords | scrypt (N=32768, r=8, p=1), per-password salt, constant-time compare — `src/modules/auth/password.ts` |
-| Sessions | 32 random bytes, server-side in Redis, 7-day TTL, httpOnly + SameSite=Lax cookie, `Secure` in production; the id rotates on login and on organization switch |
-| Tenant isolation | `requireRole` establishes `organizationId` from the session; every query filters on it. A foreign organization gets 404, not 403 — existence is not disclosed |
+| Sessions | 32 random bytes, server-side in Redis, 7-day TTL, httpOnly + SameSite=Lax cookie, `Secure` in production; the id rotates on login |
+| Team-scoped authority | `requireRole` establishes `userId` and instance `role` from the session; a route never trusts a body or query for either. Team-scoped authority (`TeamRole.LEAD`) is a database read in `TeamService`, not a route guard — a lead is refused with 403 on a team they do not lead, on appointing or touching another lead, and on another team's model access |
 | RBAC | `requireRole('MEMBER'\|'ADMIN'\|'OWNER')` on every route except login, register, and logout. Only an OWNER can change roles |
 | CSRF | SameSite=Lax plus an Origin check on every non-GET, answered with 403 `cross_origin` |
 | SSRF | Provider base URLs: https only, no embedded credentials, host must match the provider's allowed suffixes, every resolved address must be public (metadata, loopback, RFC1918, CGNAT, link-local all rejected), and probes never follow redirects |
@@ -34,14 +34,18 @@ enforced, what was found and fixed, and what is deliberately still open.
 4. **Model access was bypassable in the other direction.** Integration testing showed LiteLLM checks
    the requested model name against the key's `models` list *before* resolving aliases, so a key
    scoped to `acme/gpt-5` rejected a developer typing `gpt-5`. Keys now carry both names. Safe only
-   because every model this control plane registers is org-namespaced — noted in `src/modules/developers/access.service.ts`.
+   because every model this control plane registers is provider-namespaced — noted in `src/modules/developers/access.service.ts`.
 
 ## Verified by test
 
-`apps/api/test/unit/security.test.ts` and `test/integration/acceptance.test.ts` lock in: audit scrubbing, the SSRF
-allowlist (including suffix smuggling like `openai.azure.com.evil.example`), credentials staying out
-of `litellm_params`, unauthenticated 401s on every org-scoped route, cross-origin 403, cross-org 404
-on a developer, a revoked key failing at the gateway, and a non-granted model being refused.
+`apps/api/test/unit/security.test.ts`, `test/unit/team-access.test.ts`, and
+`test/integration/acceptance.test.ts` lock in: audit scrubbing, the SSRF allowlist (including
+suffix smuggling like `openai.azure.com.evil.example`), credentials staying out of
+`litellm_params`, unauthenticated 401s on every protected route, cross-origin 403, a team lead
+refused with 403 outside their own team (another team's members or model access, appointing a
+lead, demoting or removing an existing lead — including the re-add-as-member path that would
+otherwise demote one in two calls), a revoked key failing at the gateway, and a non-granted model
+being refused.
 
 ## Open, by decision
 

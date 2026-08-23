@@ -27,7 +27,7 @@ Everything below was checked against the live LiteLLM release/docs, not from mem
 | Secret managers (AWS SM inside LiteLLM) | **Enterprise-only feature.** | docs/secret |
 | Usage/spend | `/user/daily/activity` (breakdown by model/provider/key, paginated), `/team/daily/activity`, `/organization/daily/activity`, `/spend/logs`, `/global/spend/report` (team/customer grouping is enterprise). | docs/proxy/cost_tracking + OpenAPI |
 | Anthropic SDK | Native `/v1/messages` + `/v1/messages/count_tokens` + `/anthropic/{endpoint}` passthrough. Anthropic SDK `base_url` = proxy root (no `/v1` suffix). | docs/anthropic_unified |
-| Multi-tenancy primitives | LiteLLM has first-class `organization`, `team`, `user`, `budget` objects with their own CRUD + daily-activity endpoints. | OpenAPI |
+| Multi-tenancy primitives | LiteLLM has first-class `organization`, `team`, `user`, `budget` objects with their own CRUD + daily-activity endpoints. We mirror `team` and `user` only — Gatehouse itself is single-tenant, so there is no organization to mirror. | OpenAPI |
 | Health | `/health/liveliness`, `/health/liveness`, `/health/readiness`, `/health` (calls providers — expensive), `/health/services`. | OpenAPI |
 
 **Caveat that drives Phase 3:** the public swagger I dumped reports `version: 1.82.6`, older than our pin. So step one of the LiteLLM phase is to boot the pinned container and dump its own `/openapi.json` — that file, not this table, is the contract.
@@ -37,7 +37,7 @@ Everything below was checked against the live LiteLLM release/docs, not from mem
 1. **LiteLLM's secret-manager integration is Enterprise → we don't use it.** Our backend is the sole source of truth for provider credentials (AWS Secrets Manager in prod, `.env` locally). We read the secret and push it to LiteLLM's `/credentials` API, which encrypts it at rest with `LITELLM_SALT_KEY`. No enterprise license required anywhere in the MVP.
 2. **No generated `config.yaml` for models.** `config.yaml` holds only static settings; every provider/model is created at runtime through `/credentials` + `/model/new` with `STORE_MODEL_IN_DB=true`. No restart, no file mutation, no writes to LiteLLM's DB.
 3. **Rotation does not need the plaintext key.** `/key/{key}/regenerate` takes the key in the path, which we deliberately don't store. So rotation = `/key/generate` (new alias) → return plaintext once → `/key/delete` by old `key_alias`. If Phase-3 verification shows `regenerate` accepts a `token_id`, we switch to it and get `grace_period` for free.
-4. **Mirror our tenancy into LiteLLM** (org→organization, team→team, developer→internal user). This is not duplication: it's what makes `/user/daily/activity` and `/team/daily/activity` answer our dashboard queries directly instead of us summing spend logs.
+4. **Mirror our teams and users into LiteLLM** (team→team, developer→internal user). This is not duplication: it's what makes `/user/daily/activity` and `/team/daily/activity` answer our dashboard queries directly instead of us summing spend logs. Gatehouse is single-tenant — one deployment is one organization, implicit and unmodeled — so there is no organization to mirror.
 
 ---
 
@@ -87,7 +87,7 @@ gatehouse/
 │   │   ├── src/
 │   │   │   ├── server.ts            app factory (testable, no listen)
 │   │   │   ├── plugins/             auth, prisma, redis, ratelimit, errors, requestId
-│   │   │   ├── routes/              auth, orgs, providers, models, developers,
+│   │   │   ├── routes/              auth, providers, models, developers,
 │   │   │   │                        teams, keys, usage, budgets, audit, health
 │   │   │   ├── litellm/             client.ts (generated types), service.ts, sync.ts
 │   │   │   ├── providers/           registry.ts, azure.ts, openai.ts, anthropic.ts
@@ -119,59 +119,52 @@ gatehouse/
 
 Ours only. No provider secrets, no plaintext gateway keys, no LiteLLM tables.
 
-```prisma
-model Organization {
-  id        String   @id @default(uuid())
-  name      String
-  slug      String   @unique          // also the LiteLLM model-name namespace
-  litellmOrgId String?  @unique       // mirrored LiteLLM organization
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
+Single-tenant: one deployment is one organization, implicit and unmodeled. `role` lives directly
+on `User` — there is no `Organization` or `Membership` table, and no per-organization scoping
+anywhere below.
 
+```prisma
 model User {
   id           String   @id @default(uuid())
   email        String   @unique
   name         String
   passwordHash String?                 // argon2id; null once OIDC lands
+  role         Role                    // OWNER | ADMIN | MEMBER — instance-wide
   status       UserStatus @default(ACTIVE)   // ACTIVE | DISABLED
+  litellmUserId String?  @unique       // mirrored LiteLLM internal user
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 }
 
-model Membership {
-  id     String @id @default(uuid())
-  organizationId String
-  userId String
-  role   Role                          // OWNER | ADMIN | MEMBER
-  litellmUserId  String?               // mirrored LiteLLM internal user
-  createdAt DateTime @default(now())
-  @@unique([organizationId, userId])
-}
-
 model Team {
   id String @id @default(uuid())
-  organizationId String
   name String
-  slug String
+  slug String @unique
   litellmTeamId String? @unique
-  @@unique([organizationId, slug])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
-model TeamMember { id String @id @default(uuid()) teamId String; userId String; @@unique([teamId, userId]) }
+model TeamMember {
+  id String @id @default(uuid())
+  teamId String
+  userId String
+  role TeamRole @default(MEMBER)       // MEMBER | LEAD — authority within this team only
+  createdAt DateTime @default(now())
+  @@unique([teamId, userId])
+}
 
 model Provider {
   id String @id @default(uuid())
-  organizationId String
-  name String                          // "Azure Prod EU"
+  name String @unique                  // "Azure Prod EU"
+  slug String @unique                  // namespaces this provider's models: "{slug}/{publicModelName}"
   type ProviderType                    // AZURE_OPENAI | OPENAI | ANTHROPIC
   status ProviderStatus @default(ACTIVE)
   secretRef String                     // ARN or env:// URI — never the secret
   config Json                          // non-secret: apiBase, apiVersion
-  litellmCredentialName String? @unique  // "org-slug__provider-id"
+  litellmCredentialName String? @unique  // "{providerSlug}__{providerId}"
   lastTestedAt DateTime?
   lastTestError String?
-  @@unique([organizationId, name])
 }
 
 model ProviderModel {
@@ -179,7 +172,7 @@ model ProviderModel {
   providerId String
   publicModelName String                // "gpt-5"
   providerModelName String               // "azure/my-gpt5-deployment"
-  litellmModelName String  @unique       // "{orgSlug}/gpt-5" — global namespace
+  litellmModelName String  @unique       // "{providerSlug}/gpt-5" — global namespace
   litellmModelId String?  @unique        // model_info.id returned by /model/new
   enabled Boolean @default(true)
   metadata Json
@@ -188,7 +181,6 @@ model ProviderModel {
 
 model ModelAccess {              // absence = denied
   id String @id @default(uuid())
-  organizationId String
   userId String?                 // exactly one of userId / teamId
   teamId String?
   providerModelId String
@@ -197,7 +189,6 @@ model ModelAccess {              // absence = denied
 
 model GatewayKeyReference {
   id String @id @default(uuid())
-  organizationId String
   userId String?
   teamId String?
   keyAlias String @unique        // our handle into LiteLLM — how we revoke
@@ -211,7 +202,6 @@ model GatewayKeyReference {
 
 model Budget {
   id String @id @default(uuid())
-  organizationId String
   userId String?
   teamId String?
   maxBudget Decimal
@@ -222,7 +212,6 @@ model Budget {
 
 model AuditLog {
   id String @id @default(uuid())
-  organizationId String
   actorUserId String?
   action String                  // PROVIDER_CREATED, API_KEY_REVOKED, ...
   targetType String
@@ -230,28 +219,32 @@ model AuditLog {
   metadata Json                  // redacted at the writer, not the reader
   ip String?
   createdAt DateTime @default(now())
-  @@index([organizationId, createdAt])
+  @@index([createdAt])
 }
 ```
 
 `lastUsedAt` on keys is deliberately absent — LiteLLM already knows it; we read it from `/key/info` rather than maintaining a write on every request.
 
-**Model naming under multi-tenancy.** One LiteLLM instance serves every org, so `model_name` must be globally unique: we register `{orgSlug}/gpt-5`. Developers still type `gpt-5` because the key carries `aliases: {"gpt-5": "acme/gpt-5"}`. Single-org self-hosts get the same DX with the alias layer as a no-op.
+**Model naming.** Models are namespaced per provider so two providers can both offer `gpt-5`: we
+register `{providerSlug}/gpt-5`. Developers still type `gpt-5` because the key carries
+`aliases: {"gpt-5": "azure-prod/gpt-5"}`.
+
+**Team-scoped authority.** A team `LEAD` manages that team's own membership and model access —
+add/remove a member, grant/revoke a model — but cannot touch providers, act on another team, or
+appoint/demote/remove a lead; those require instance `OWNER` or `ADMIN`. The check is a database
+read in `TeamService`, not a route guard, because controllers do not branch on domain state.
 
 ---
 
 ## 4. API specification
 
-Sessions are httpOnly cookies; `organizationId` always comes from the session, never the body.
+Sessions are httpOnly cookies; `userId` and `role` always come from the session, never the body.
 
 ```
-POST   /api/auth/register           bootstrap: first user + org (disabled after first, unless ALLOW_SIGNUP)
+POST   /api/auth/register           bootstrap: first user (disabled after first, unless ALLOW_SIGNUP)
 POST   /api/auth/login
 POST   /api/auth/logout
-GET    /api/me                      user + memberships + active org
-
-GET    /api/organizations           orgs the caller belongs to
-POST   /api/organizations/:id/switch
+GET    /api/me                      user + instance role + team memberships
 
 GET    /api/providers
 POST   /api/providers               body: {name, type, credentials{...}, config{...}}
@@ -280,6 +273,11 @@ POST   /api/developers/:id/keys/:keyId/revoke
 
 GET    /api/teams  POST /api/teams  GET|PATCH|DELETE /api/teams/:id
 POST   /api/teams/:id/members       DELETE /api/teams/:id/members/:userId
+                                     // a LEAD may call these for their own team; ADMIN/OWNER
+                                     // required to appoint or touch another lead, or to act on
+                                     // any other team. The member picker in the dashboard calls
+                                     // GET /developers (admin-only), so this is API-only for a
+                                     // lead today — the UI path does not exist yet.
 
 GET    /api/usage?from=&to=                  totals
 GET    /api/usage/developers|models|providers
@@ -314,8 +312,8 @@ class LiteLLMService {
   listKeys(filter)                             // GET  /key/list
   blockKey / unblockKey                        // /key/block, /key/unblock
 
-  // tenancy mirror
-  upsertOrganization / upsertTeam / upsertUser // /organization/new, /team/new, /user/new
+  // mirror (team + user only — Gatehouse is single-tenant, no organization to mirror)
+  upsertTeam / upsertUser                      // /team/new, /user/new
 
   // providers + models
   upsertCredential(name, values, info)         // POST /credentials
@@ -325,7 +323,7 @@ class LiteLLMService {
 
   // usage
   userActivity(litellmUserId, from, to)        // GET /user/daily/activity
-  teamActivity / organizationActivity
+  teamActivity                                 // GET /team/daily/activity
   spendLogs(filter)                            // GET /spend/logs
 
   health()                                     // GET /health/readiness (never /health)
@@ -342,10 +340,10 @@ Implementation notes:
 **Provider onboarding flow (no restart, no config file):**
 ```
 credentials → secrets provider → secretRef stored in our DB
-           → POST /credentials {credential_name: "acme__prov-123", credential_values:{...}}
-model      → POST /model/new {model_name:"acme/gpt-5",
+           → POST /credentials {credential_name: "azure-prod__prov-123", credential_values:{...}}
+model      → POST /model/new {model_name:"azure-prod/gpt-5",
                               litellm_params:{model:"azure/my-deploy",
-                                              litellm_credential_name:"acme__prov-123"}}
+                                              litellm_credential_name:"azure-prod__prov-123"}}
            → store returned model id
 ```
 Credential values live in LiteLLM's DB encrypted with `LITELLM_SALT_KEY`; AWS Secrets Manager remains the source of truth we can always re-push from.
@@ -363,7 +361,7 @@ interface SecretStore {
 ```
 Two implementations, chosen by `SECRETS_BACKEND=aws|env`:
 
-- **aws** — `gatehouse/{env}/{orgId}/providers/{providerId}`, accessed via task-role IAM. Policy is scoped to that path prefix, `secretsmanager:GetSecretValue|CreateSecret|PutSecretValue|DeleteSecret` only. `LITELLM_MASTER_KEY`, `LITELLM_SALT_KEY`, `SESSION_SECRET`, `DATABASE_URL` live under `gatehouse/{env}/platform/*`.
+- **aws** — `gatehouse/{env}/providers/{providerId}`, accessed via task-role IAM. Policy is scoped to that path prefix, `secretsmanager:GetSecretValue|CreateSecret|PutSecretValue|DeleteSecret` only. `LITELLM_MASTER_KEY`, `LITELLM_SALT_KEY`, `SESSION_SECRET`, `DATABASE_URL` live under `gatehouse/{env}/platform/*`.
 - **env** — local dev; `secretRef` is `env://PROVIDER_<ID>` backed by an in-memory map seeded from `.env`. Zero AWS dependency for `docker compose up`.
 
 Invariants, enforced by tests: provider credentials never appear in an API response, a log line, an audit entry, or a `GET /api/providers/:id` payload. A pino redaction serializer strips `api_key|apiKey|authorization|password|secret|token|key` from every log object, and there is one test that asserts it.
@@ -421,10 +419,10 @@ Not in v1: Kubernetes, multi-region, autoscaling policies beyond CPU target trac
 
 | Control | Implementation |
 |---|---|
-| Tenant isolation | Every Prisma query goes through a repository helper that requires `organizationId` from the session. One test per route asserts cross-org 404. |
-| AuthN | argon2id (memory 64MB, t=3), session id in httpOnly+Secure+SameSite=Lax cookie, server-side sessions in Redis with idle+absolute expiry. |
+| Session identity | `requireRole` establishes `userId` and instance `role` from the session, never from a request body or query. |
+| AuthN | scrypt (N=32768, r=8, p=1) with a per-password salt, session id in httpOnly+Secure+SameSite=Lax cookie, server-side sessions in Redis. |
 | CSRF | SameSite=Lax + Origin header check on all non-GET. |
-| AuthZ | `requireRole(OWNER|ADMIN)` preHandler; MEMBERs can read their own keys/usage only. |
+| AuthZ | `requireRole('OWNER'\|'ADMIN')` preHandler for instance-wide routes; MEMBERs can read their own keys/usage only. Team-scoped authority (`TeamRole.LEAD`) is a database read in `TeamService`, not a route guard, and is refused with 403 outside the lead's own team. |
 | SSRF | Provider `api_base` validated: https only, hostname must match the provider's allowed suffix list (`*.openai.azure.com`, `api.openai.com`, `api.anthropic.com`), DNS resolved and rejected if it lands in a private/link-local/metadata range, no redirects followed on the test call. |
 | Secret exposure | Redaction serializer + response DTOs that whitelist fields; "no secret in response" contract test. |
 | Master key | Backend-only, never in web env, never in an image layer, never in an error body. |
@@ -444,9 +442,9 @@ Each phase ends green and demoable. Nothing ships without the check that proves 
 Workspaces, Fastify app factory, Next.js shell, Prisma schema + first migration, docker-compose with all five services healthy, `.env.example`, health/ready endpoints, CI (typecheck, lint, test).
 *Verify:* `docker compose up` → `/ready` returns all-healthy; pinned LiteLLM's `/openapi.json` dumped and committed.
 
-**Phase 2 — Auth, orgs, RBAC**
-register/login/logout/me, sessions, memberships, roles, org-scoped repository helper, audit log writer, login rate limit.
-*Verify:* cross-org isolation tests; a MEMBER hitting an ADMIN route gets 403.
+**Phase 2 — Auth, teams, RBAC**
+register/login/logout/me, sessions, instance role on `User`, teams and `TeamRole`, audit log writer, login rate limit.
+*Verify:* a MEMBER hitting an ADMIN route gets 403; a team LEAD is refused outside their own team.
 
 **Phase 3 — LiteLLM integration**
 Generated client types, `LiteLLMService`, master-key loading, health check, key create/revoke/rotate, tenancy mirror.
@@ -461,7 +459,7 @@ Developer CRUD, teams, model access → the `models` array and `aliases` map on 
 *Verify:* full acceptance flow from spec §48, with a `mock_response` model so CI needs no provider — create key → call → revoke → call fails 401.
 
 **Phase 6 — Usage**
-Read-through from `/user|team|organization/daily/activity`, 60s Redis cache, dashboard aggregates by developer/model/provider. No independent cost math.
+Read-through from `/user|team/daily/activity`, 60s Redis cache, dashboard aggregates by developer/model/provider. No independent cost math.
 
 **Phase 7 — UI**
 Dashboard, providers, models, developers, teams, usage, budgets, audit logs, settings, and the Connect page with copy-paste OpenAI + Anthropic snippets. Tailwind + shadcn/ui, dark mode via `next-themes`.
@@ -470,7 +468,7 @@ Dashboard, providers, models, developers, teams, usage, budgets, audit logs, set
 Terraform, ECR + GitHub Actions deploy, the ALB routing rules that keep LiteLLM's admin API off the internet, CloudWatch alarms, deployment doc.
 
 **Phase 9 — Security pass**
-Threat-model walkthrough of every row in §9, dependency audit, log scrape for leaked secrets, a deliberate attempt to reach another org's data and to reach `/key/generate` through the public ALB.
+Threat-model walkthrough of every row in §9, dependency audit, log scrape for leaked secrets, a deliberate attempt to reach another team's data as a lead and to reach `/key/generate` through the public ALB.
 
 **Ordering rationale:** 3 before 4 because provider onboarding is defined by what LiteLLM's API actually accepts; 5 before 6 because usage data needs keys that have spent something.
 
@@ -484,4 +482,4 @@ Threat-model walkthrough of every row in §9, dependency audit, log scrape for l
 - Apache-2.0 for our code; LiteLLM stays an unmodified upstream container image, attributed in `NOTICE`.
 - Sessions over JWT — revocation is free and the browser is the only consumer.
 - Single Postgres instance, two databases, in both dev and v1 prod. Schemas stay decoupled; the split into separate instances is a config change, not a refactor.
-- One shared LiteLLM instance across orgs, with org-namespaced model names + per-key aliases. A per-org LiteLLM deployment is the escape hatch if an org ever needs hard isolation.
+- One LiteLLM instance per deployment, with provider-namespaced model names + per-key aliases. Single-tenant by design: one deployment serves one organization, implicit and unmodeled in the schema.

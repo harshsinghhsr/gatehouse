@@ -1,8 +1,11 @@
 # Gatehouse
 
-Self-hosted control plane around an unmodified LiteLLM proxy. We own organizations, users, providers,
+Self-hosted control plane around an unmodified LiteLLM proxy. We own teams, users, providers,
 the model catalog, key lifecycle, budgets, and the dashboard. LiteLLM owns LLM traffic,
 virtual keys, rate limits, and spend. See [PLAN.md](PLAN.md).
+
+Gatehouse is single-tenant: one deployment serves one organization, which is implicit and has
+no representation in the schema.
 
 ## Working agreements
 
@@ -41,7 +44,9 @@ The backend is layered. Each rule below exists because breaking it caused a real
   API response. Postgres stores a secret *reference*, never a secret.
 - Gateway keys: the plaintext is returned exactly once and never stored. We keep alias +
   `token_id` + a masked prefix; revocation goes through the alias.
-- `organizationId` always comes from the session, never from a request body or query.
+- `userId` and `role` always come from the session, never from a request body or query.
+  Team-scoped authority (`TeamRole.LEAD`) is checked in `TeamService`, not in a route guard:
+  it is a database read, and controllers do not branch on domain state.
 - **The design system is Geist, and it lives in `apps/web/src/styles/global.css`.** Components
   come from `shared/ui`; pages compose them and never invent a one-off style. Reach for a token,
   not a hex value, and check both themes before calling it done.

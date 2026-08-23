@@ -33,7 +33,7 @@ In practice that means the provider key ends up in a group chat, a shared vault 
 [LiteLLM](https://github.com/BerriAI/litellm) already solves the hard half of this. It proxies
 every provider behind one OpenAI-compatible endpoint, authenticates virtual keys, enforces budgets
 and rate limits, and prices every request. What it doesn't ship is the operational layer a company
-needs on top: organizations and roles, an admin who can onboard a provider without touching a
+needs on top: teams and roles, an admin who can onboard a provider without touching a
 config file, a developer who can see their own usage, an audit trail of who granted what, and
 somewhere safe for the provider credential to live.
 
@@ -64,10 +64,10 @@ the LiteLLM endpoint underneath, so anything that speaks OpenAI or Anthropic spe
 |---|---|
 | **Providers without credential sharing** | Add Azure OpenAI, OpenAI, or Anthropic once. The secret goes to AWS Secrets Manager or a 0600 file on the host — Postgres only ever stores a *reference*. It is never returned by an API, never logged, never in the browser bundle. |
 | **Virtual keys, issued and revoked** | Mint a key for a developer, show it once, never store it. Revoke it and the next request fails at the gateway in seconds. Rotation does not touch anyone else. |
-| **Per-model access grants** | A developer reaches exactly the models they were granted. Models are namespaced per organization, so two tenants can both publish `gpt-5`. |
+| **Per-model access grants** | A developer or team reaches exactly the models they were granted. Models are namespaced per provider, registered as `{providerSlug}/gpt-5`, so two providers can both offer `gpt-5`. |
 | **Budgets that actually stop spend** | Monthly or daily caps per developer or per team, enforced by LiteLLM at request time — not a dashboard that emails you afterwards. |
 | **Usage and cost attribution** | Spend per developer, per team, per model, over any date range, priced by LiteLLM's own cost map. |
-| **Organizations, teams, and RBAC** | Owner, admin, and member roles. `organizationId` always comes from the session, never from the request, so cross-tenant access returns 404 rather than leaking existence. |
+| **Teams and RBAC** | Owner, admin, and member roles instance-wide; a team `LEAD` manages that team's own membership and model access via the API (the dashboard's member picker is admin-only today). `userId` and `role` always come from the session, never from the request. |
 | **An audit log you can defend** | Every mutation and its audit row commit in the same transaction, with secret-shaped values scrubbed before they are written. |
 | **A connect page** | Copy-paste snippets with the developer's own base URL and model names, so onboarding is a link rather than a conversation. |
 
@@ -89,7 +89,7 @@ docker compose up
 | LiteLLM gateway | <http://localhost:4000> |
 
 Open the dashboard, choose **Set up the platform**, and create the first account — that bootstraps
-your organization and its owner. Sign-up closes itself afterwards; admins add everyone else from
+the instance and its owner. Sign-up closes itself afterwards; admins add everyone else from
 **Developers**.
 
 Then: add a provider → add a model → add a developer → grant models → create a key → open
@@ -98,7 +98,7 @@ Then: add a provider → add a model → add a developer → grant models → cr
 ## How it works
 
 ```text
-browser ──▶ Gatehouse API ──▶ Postgres            orgs, users, providers, catalog,
+browser ──▶ Gatehouse API ──▶ Postgres            users, teams, providers, catalog,
              (Fastify)         │                  key references, budgets, audit
                                ├──▶ Secrets Manager / file    provider credentials, by reference
                                └──▶ LiteLLM admin API         keys, models, credentials, spend
@@ -119,7 +119,7 @@ Two properties fall out of this split, and both are deliberate:
 | --- | --- | --- | --- |
 | Provider credentials | Never leave your infrastructure | Never leave your infrastructure | Uploaded to a vendor |
 | Issuing keys to people | Dashboard, with roles and an audit trail | Admin API or the built-in UI, single-tenant | Dashboard |
-| Multi-tenant orgs and RBAC | Yes | Partial | Usually paid |
+| Teams and RBAC | Yes | Partial | Usually paid |
 | Data residency | Your Postgres, your VPC | Yours | Vendor's |
 | Cost | Free, Apache-2.0 | Free, MIT | Per-request or per-seat |
 | Runs without the internet | Yes, aside from the providers themselves | Yes | No |
@@ -161,7 +161,7 @@ Threat model, what a dedicated review found and fixed, and what is deliberately 
 
 - Provider credentials never touch Postgres, a log line, an audit entry, or an API response.
 - Gateway keys are displayed once and never stored — only an alias, a token id, and a masked prefix.
-- `organizationId` comes from the session, always; a foreign record returns 404, not 403.
+- `userId` and `role` come from the session, always; a foreign record returns 404, not 403.
 - Provider base URLs are checked against a host allowlist with private, loopback, and cloud
   metadata ranges refused, and redirects are never followed.
 - Passwords are scrypt with a per-password salt; sessions are server-side in Redis with the id
@@ -248,8 +248,10 @@ is opt-in with one environment variable.
 **Can I run it without Docker?** Yes — Node 22, Postgres 17, Redis/Valkey, and a LiteLLM instance.
 Compose is just the packaged version of that.
 
-**Is it multi-tenant?** Yes. Organizations are isolated at every query, and models are namespaced
-per organization inside the gateway.
+**Is it multi-tenant?** No. Gatehouse is single-tenant — one deployment serves one organization,
+which is implicit and has no representation in the schema. Inside that organization, teams and
+per-model grants control who reaches what, and models are namespaced per provider so two providers
+can both offer `gpt-5`.
 
 **What is the license?** Apache-2.0, including for commercial and internal use.
 
