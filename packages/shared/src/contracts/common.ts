@@ -16,7 +16,8 @@ export type TeamRole = z.infer<typeof teamRoleSchema>;
 export const userStatusSchema = z.enum(['ACTIVE', 'DISABLED']);
 export type UserStatus = z.infer<typeof userStatusSchema>;
 
-export const providerTypeSchema = z.enum(['AZURE_OPENAI', 'OPENAI', 'ANTHROPIC']);
+/** MOCK is a development-only demo provider; the API registers it only when it is enabled. */
+export const providerTypeSchema = z.enum(['AZURE_OPENAI', 'OPENAI', 'ANTHROPIC', 'MOCK']);
 export type ProviderType = z.infer<typeof providerTypeSchema>;
 
 export const providerStatusSchema = z.enum(['ACTIVE', 'DISABLED']);

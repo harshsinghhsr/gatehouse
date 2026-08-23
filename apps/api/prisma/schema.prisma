@@ -35,6 +35,9 @@ enum ProviderType {
   AZURE_OPENAI
   OPENAI
   ANTHROPIC
+  /// Development-only demo provider. Registered by the API only when ENABLE_MOCK_PROVIDER is set,
+  /// which boot refuses in production.
+  MOCK
 }
 
 enum ProviderStatus {

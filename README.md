@@ -108,6 +108,18 @@ Providers are verified against the real vendor at creation time, so it only seed
 supply working keys through `SEED_OPENAI_API_KEY`, `SEED_ANTHROPIC_API_KEY`, or `SEED_AZURE_API_KEY`;
 without them it seeds everything else and says which providers it skipped.
 
+### Seeing usage without a vendor account
+
+`ENABLE_MOCK_PROVIDER=true` — set in `.env.example`, so a fresh clone already has it — registers a
+**MOCK** provider type. Its models are registered with LiteLLM's own `mock_response`, so a request
+never leaves the gateway and needs no API key, while LiteLLM still counts the tokens and prices them
+from its table. The seed then issues real developer keys and sends a few dozen chat completions
+through them, which is what puts spend, requests, tokens, and a per-developer distribution on the
+dashboard. `docker compose up` plus `npm run seed` is the whole setup.
+
+It is a demo aid, not a feature: the answers are fabricated. The production compose file never sets
+the variable, and the API refuses to boot with `NODE_ENV=production` while it is on.
+
 ## How it works
 
 ```text

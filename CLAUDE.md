@@ -60,6 +60,9 @@ The backend is layered. Each rule below exists because breaking it caused a real
     ./scripts/setup-env.sh                 # writes .env with generated secrets
     docker compose up                      # postgres, redis, litellm, api, web
     npm run seed                           # fills a local instance with demo data via the HTTP API
+    # ENABLE_MOCK_PROVIDER=true (dev compose only) adds a MOCK provider type whose models answer
+    # from LiteLLM's mock_response: no vendor, no API key, but real spend and token metering, so
+    # `npm run seed` also generates traffic and the dashboard has numbers. Boot refuses it in production.
     docker compose --profile aws up -d floci   # AWS stand-in for the Secrets Manager path
     docker compose -f docker-compose.prod.yml up -d --build   # the deployment stack
 

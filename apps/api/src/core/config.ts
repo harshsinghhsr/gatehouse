@@ -47,6 +47,16 @@ const configSchema = z.object({
     .default('false')
     .transform((v) => v === 'true'),
   sessionTtlSeconds: z.coerce.number().int().positive().default(60 * 60 * 24 * 7),
+
+  /**
+   * Registers a MOCK provider type whose models answer from LiteLLM's own `mock_response`:
+   * real metering, no vendor contacted, no API key needed. A demo aid for development only —
+   * boot refuses it in production rather than serving fabricated answers to real traffic.
+   */
+  enableMockProvider: z
+    .string()
+    .default('false')
+    .transform((v) => v === 'true'),
 });
 
 export type Config = z.infer<typeof configSchema>;
@@ -71,6 +81,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       trustProxy: env.TRUST_PROXY,
       allowSignup: env.ALLOW_SIGNUP,
       sessionTtlSeconds: env.SESSION_TTL_SECONDS,
+      enableMockProvider: env.ENABLE_MOCK_PROVIDER,
     }),
   );
 
@@ -111,6 +122,13 @@ function assertProductionReady(config: Config): void {
   if (placeholder.test(config.litellmMasterKey) || config.litellmMasterKey.length < 24) {
     throw new Error(
       'LITELLM_MASTER_KEY is a development placeholder. Run ./scripts/setup-env.sh to generate real secrets.',
+    );
+  }
+
+  if (config.enableMockProvider) {
+    throw new Error(
+      'ENABLE_MOCK_PROVIDER is a development-only demo aid and cannot be used with NODE_ENV=production: ' +
+        'its models fabricate responses. Unset it.',
     );
   }
 

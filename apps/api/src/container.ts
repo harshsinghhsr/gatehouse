@@ -21,6 +21,7 @@ import { AccessService } from './modules/developers/access.service.js';
 import { DeveloperService } from './modules/developers/developer.service.js';
 import { KeyService } from './modules/developers/key.service.js';
 import { ModelService } from './modules/models/model.service.js';
+import { registerMockProvider } from './modules/providers/catalog/index.js';
 import { ProviderService } from './modules/providers/provider.service.js';
 import { TeamService } from './modules/teams/team.service.js';
 import { UsageService } from './modules/usage/usage.service.js';
@@ -64,6 +65,9 @@ export function createContainer(
   logger: PinoLogger,
   overrides: ContainerOverrides = {},
 ): AppContainer {
+  // Development-only demo provider. loadConfig refuses this flag in production.
+  if (config.enableMockProvider) registerMockProvider();
+
   const prisma = overrides.prisma ?? createPrismaClient(config.databaseUrl);
   const redis = overrides.redis ?? createRedis(config.redisUrl);
   const clock = overrides.clock ?? systemClock;

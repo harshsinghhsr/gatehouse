@@ -87,14 +87,50 @@ const anthropic: ProviderAdapter = {
   },
 };
 
-export const PROVIDER_CATALOG: Readonly<Record<ProviderType, ProviderAdapter>> = Object.freeze({
+const MOCK_RESPONSE = 'This is a mock response from the Gatehouse development provider.';
+
+/**
+ * Development-only. Every model of this provider carries LiteLLM's own `mock_response`, so a
+ * request is answered by the gateway itself: no vendor is contacted and no credential is needed,
+ * while spend, tokens and request counts are metered exactly as they are for real traffic.
+ * LiteLLM prices the mocked tokens from its own table, so `providerModelName` must be a model it
+ * knows — "gpt-4o-mini", "claude-3-5-sonnet-20241022" — or the spend comes out zero.
+ */
+const mock: ProviderAdapter = {
+  displayName: 'Mock (development)',
+  credentialFields: [],
+  configFields: [],
+  allowedHostSuffixes: [],
+
+  // LiteLLM wants a key on the deployment even when nothing is called. This is not a credential:
+  // it reaches no vendor, and no vendor would accept it.
+  credentialValues: () => ({ api_key: 'sk-mock-no-vendor-is-contacted' }),
+
+  modelParams: (model) => ({ model, mock_response: MOCK_RESPONSE }),
+
+  // Nothing is contacted, so nothing can be reported: an empty list is the honest answer.
+  verify: async () => [],
+};
+
+const catalog = {
   AZURE_OPENAI: azureOpenAi,
   OPENAI: openAi,
   ANTHROPIC: anthropic,
-});
+  // MOCK is added by registerMockProvider() only when the flag is on, so an unregistered MOCK
+  // fails exactly like any type with no adapter.
+} as Record<ProviderType, ProviderAdapter>;
+
+export const PROVIDER_CATALOG: Readonly<Record<ProviderType, ProviderAdapter>> = catalog;
+
+/** Called from the composition root when config.enableMockProvider is set. Nowhere else. */
+export function registerMockProvider(): void {
+  catalog.MOCK = mock;
+}
 
 export function adapterFor(type: ProviderType): ProviderAdapter {
-  return PROVIDER_CATALOG[type];
+  const adapter = catalog[type] as ProviderAdapter | undefined;
+  if (!adapter) throw new ValidationError(`Unknown provider type: ${type}`);
+  return adapter;
 }
 
 /**

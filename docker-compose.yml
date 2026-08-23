@@ -82,6 +82,9 @@ services:
       WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:3000}
       GATEWAY_PUBLIC_URL: ${GATEWAY_PUBLIC_URL:-http://localhost:4000}
       ALLOW_SIGNUP: ${ALLOW_SIGNUP:-false}
+      # Dev-only demo aid: see .env.example. The production stack never sets it, and the API
+      # refuses to boot with NODE_ENV=production while it is on.
+      ENABLE_MOCK_PROVIDER: ${ENABLE_MOCK_PROVIDER:-false}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       PORT: "3001"
     # Hot reload: the source is mounted, node_modules stay from the image.

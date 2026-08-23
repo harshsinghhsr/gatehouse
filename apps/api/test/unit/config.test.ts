@@ -75,6 +75,27 @@ describe('configuration', () => {
     assert.equal(config.nodeEnv, 'production');
   });
 
+  test('the mock provider is off unless it is asked for', () => {
+    assert.equal(loadConfig(base).enableMockProvider, false);
+    assert.equal(loadConfig({ ...base, ENABLE_MOCK_PROVIDER: '' }).enableMockProvider, false, 'blank is unset');
+    assert.equal(loadConfig({ ...base, ENABLE_MOCK_PROVIDER: 'yes' }).enableMockProvider, false, 'only "true"');
+    assert.equal(loadConfig({ ...base, ENABLE_MOCK_PROVIDER: 'true' }).enableMockProvider, true);
+  });
+
+  test('production refuses the mock provider outright, rather than quietly disabling it', () => {
+    const production = {
+      ...base,
+      NODE_ENV: 'production',
+      WEB_ORIGIN: 'https://gateway.example.com',
+      LITELLM_MASTER_KEY: `sk-${'a'.repeat(48)}`,
+    };
+    assert.throws(
+      () => loadConfig({ ...production, ENABLE_MOCK_PROVIDER: 'true' }),
+      /ENABLE_MOCK_PROVIDER is a development-only demo aid/,
+    );
+    assert.equal(loadConfig(production).enableMockProvider, false, 'unset is still fine in production');
+  });
+
   test('TRUST_PROXY is a hop count, a flag, or a proxy address', () => {
     assert.equal(loadConfig(base).trustProxy, false, 'directly exposed by default');
     assert.equal(loadConfig({ ...base, TRUST_PROXY: '1' }).trustProxy, 1);
