@@ -151,8 +151,8 @@ repository lookup on mutating paths only, never on every request.
 | `GET /teams`, `GET /teams/:id` | `MEMBER` | none |
 | `POST /teams` | `ADMIN` | none — creating teams is instance-level |
 | `DELETE /teams/:id` | `ADMIN` | none — deletion is not delegated |
-| `POST /teams/:id/members` | `MEMBER` | `assertCanManage` |
-| `DELETE /teams/:id/members/:userId` | `MEMBER` | `assertCanManage` |
+| `POST /teams/:id/members` | `MEMBER` | `assertMayAppoint` + `assertCanManage` + `assertMayTouchLead` |
+| `DELETE /teams/:id/members/:userId` | `MEMBER` | `assertCanManage` + `assertMayTouchLead` |
 | `PUT /teams/:id/models` | `MEMBER` | `assertCanManage` |
 
 `assertCanManage` passes for `OWNER` and `ADMIN`, or for a caller whose `TeamMember` row on that
@@ -160,10 +160,23 @@ team has `role = LEAD`. Otherwise it throws `ForbiddenError`.
 
 Two escalation guards:
 
-- **Only `OWNER`/`ADMIN` may assign or revoke `LEAD`.** A lead may add and remove plain members
-  only. Without this a lead could mint peers, or remove the admin who appointed them.
+- **Only `OWNER`/`ADMIN` may appoint a `LEAD`** (`assertMayAppoint`, on the role being written).
+  Without this a lead could mint peers.
+- **A non-admin may not write or delete a membership row whose *existing* role is `LEAD`**
+  (`assertMayTouchLead(context, teamId, userId, verb)`), whatever role is being written. Both
+  `addMember` and `removeMember` route through it, so the rule lives in exactly one place.
 - `addTeamMemberRequestSchema` gains `role: teamRoleSchema.default('MEMBER')`, and `POST
   /teams/:id/members` becomes an upsert, so changing a member's role needs no second route.
+
+> **Correction — the first version of this rule was insecure.** It refused only
+> `role === 'LEAD'` on the way in, and protected removal with an inline check on the target row.
+> Because the upsert does `update: { role }`, writing a *lower* role onto an existing lead went
+> unguarded: a lead could re-POST a peer lead as `MEMBER` (silently demoting them) and then
+> remove them, since `removeMember` by that point saw an ordinary member. Two calls defeated
+> "only an admin can remove a team lead". Keying the guard on the target's existing role, and
+> sharing it across both write paths, is what closes it — a demotion special case inside
+> `assertMayAppoint` would have left any future third write path equally exposed. Do not revert
+> this against an older draft.
 
 **Grant scope**: a lead may grant their team any enabled model in the catalog. There is no
 per-team allow-list. Spend is contained by budgets and observed through the audit log, not by
@@ -195,7 +208,11 @@ trusted organization; a pre-approval layer is a feature to add later, not a guar
   `{ organizationId: 'org-1', ... }` audit-context literal at line 45.
 - New `test/unit/team-access.test.ts` covers the team-lead boundary, which nothing tests today:
   a `LEAD` of team A is refused on team B, refused on promoting anyone to `LEAD`, refused on
-  removing an existing `LEAD`, and allowed on their own team's members and models.
+  removing an existing `LEAD`, refused on *demoting* a peer `LEAD` (the chained escalation above,
+  asserting no write happened), and allowed on their own team's members and models. A plain
+  member of the team is refused on every managed path. Refusals assert
+  `error instanceof ForbiddenError`, not just the message: a bare `Error` with the same wording
+  would be mapped to a 500 and a message-only assertion would still pass.
 - `test/unit/key.service.test.ts`, `test/http/server.test.ts`,
   `test/integration/acceptance.test.ts`: updated signatures; the acceptance flow additionally
   asserts that `instanceUsage` returns non-empty data after a real request.

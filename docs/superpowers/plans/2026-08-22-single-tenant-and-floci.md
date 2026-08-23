@@ -890,7 +890,9 @@ now namespaced by provider slug, and instance usage comes from an unfiltered
 ### Task 4: Team leads
 
 Additive on the clean single-tenant base. A `LEAD` manages their own team's membership and model
-access, and gains nothing over providers, other teams, keys, or budgets.
+access, and gains nothing over providers, other teams, keys, or budgets. A lead may never write or
+delete a membership row that currently holds `LEAD` — see the correction note in Step 4, which
+records why the obvious "refuse role === 'LEAD'" guard is not enough.
 
 The check lives in `TeamService`, not in a route guard: "is this caller a lead of *this* team" is
 a database read, and controllers do not branch on domain state. `AuthContext` is deliberately not
@@ -919,6 +921,7 @@ Create `apps/api/test/unit/team-access.test.ts`:
 ```ts
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { ForbiddenError } from '../../src/core/errors.js';
 import type { AuditService } from '../../src/modules/audit/audit.service.js';
 import type { AuthContext } from '../../src/modules/auth/authenticator.js';
 import type { AccessService } from '../../src/modules/developers/access.service.js';
@@ -933,17 +936,33 @@ import { autoStub, fakeGateway, fakeUnitOfWork, stubRepositories } from '../supp
  */
 
 const lead: AuthContext = { userId: 'user-lead', role: 'MEMBER', ip: null };
+const plain: AuthContext = { userId: 'user-plain', role: 'MEMBER', ip: null };
 const admin: AuthContext = { userId: 'user-admin', role: 'ADMIN', ip: null };
 
-/** Team A is led by user-lead. Team B has no leads. */
+/**
+ * Both halves matter: refusals must be the domain `ForbiddenError` (a plain Error with the same
+ * wording would leave `http/error-handler.ts` mapping it to a 500), and the message identifies
+ * *which* rule refused, so one guard cannot masquerade as another.
+ */
+const forbidden = (message: RegExp) => (error: unknown) => {
+  assert.ok(error instanceof ForbiddenError, `expected ForbiddenError, got ${String(error)}`);
+  assert.match(error.message, message);
+  return true;
+};
+
+/** Team A is led by user-lead and has user-plain as a rank-and-file member. Team B has no leads. */
 function serviceWith(overrides: Partial<TeamRepository> = {}) {
   const teams = autoStub<TeamRepository>('teams', {
     findById: async (id: string) =>
       id === 'team-a' || id === 'team-b'
         ? { id, name: id, slug: id, litellmTeamId: null }
         : null,
-    findMember: async (teamId: string, userId: string) =>
-      teamId === 'team-a' && userId === 'user-lead' ? { userId, role: 'LEAD' as const } : null,
+    findMember: async (teamId: string, userId: string) => {
+      if (teamId !== 'team-a') return null;
+      if (userId === 'user-lead') return { userId, role: 'LEAD' as const };
+      if (userId === 'user-plain') return { userId, role: 'MEMBER' as const };
+      return null;
+    },
     ...overrides,
   });
   const repos = stubRepositories({ teams });
@@ -970,21 +989,21 @@ function serviceWith(overrides: Partial<TeamRepository> = {}) {
 test('a lead is refused on a team they do not lead', async () => {
   await assert.rejects(
     () => serviceWith().addMember(lead, 'team-b', 'user-x'),
-    /do not lead this team/i,
+    forbidden(/do not lead this team/i),
   );
 });
 
 test('a lead is refused on another team’s model access', async () => {
   await assert.rejects(
     () => serviceWith().setModelAccess(lead, 'team-b', ['model-1']),
-    /do not lead this team/i,
+    forbidden(/do not lead this team/i),
   );
 });
 
 test('a lead cannot appoint another lead', async () => {
   await assert.rejects(
     () => serviceWith().addMember(lead, 'team-a', 'user-x', 'LEAD'),
-    /only an admin can appoint a team lead/i,
+    forbidden(/only an admin can appoint a team lead/i),
   );
 });
 
@@ -997,7 +1016,7 @@ test('a lead cannot remove an existing lead', async () => {
   });
   await assert.rejects(
     () => service.removeMember(lead, 'team-a', 'user-other'),
-    /only an admin can remove a team lead/i,
+    forbidden(/only an admin can remove a team lead/i),
   );
 });
 
@@ -1010,6 +1029,76 @@ test('an admin may appoint a lead on any team', async () => {
   });
   await service.addMember(admin, 'team-b', 'user-x', 'LEAD');
   assert.deepEqual(added, [['team-b', 'user-x', 'LEAD']]);
+});
+
+/** A team with two leads: user-lead (the caller) and user-other (the peer). */
+function serviceWithPeerLead(added: unknown[]) {
+  return serviceWith({
+    findMember: async (teamId: string, userId: string) =>
+      teamId === 'team-a' && (userId === 'user-lead' || userId === 'user-other')
+        ? { userId, role: 'LEAD' as const }
+        : null,
+    addMember: async (...args: unknown[]) => {
+      added.push(args);
+    },
+    removeMember: async (...args: unknown[]) => {
+      added.push(args);
+    },
+  });
+}
+
+test('a lead cannot demote a peer lead by re-adding them as a member', async () => {
+  // The upsert overwrites the stored role, so without a guard this demotes the peer and the
+  // "only an admin can remove a team lead" rule falls in two calls.
+  const added: unknown[] = [];
+  await assert.rejects(
+    () => serviceWithPeerLead(added).addMember(lead, 'team-a', 'user-other', 'MEMBER'),
+    forbidden(/only an admin can change a team lead/i),
+  );
+  assert.deepEqual(added, [], 'the refusal must happen before any write');
+});
+
+test('an admin may still demote a lead', async () => {
+  const added: unknown[] = [];
+  await serviceWithPeerLead(added).addMember(admin, 'team-a', 'user-other', 'MEMBER');
+  assert.deepEqual(added, [['team-a', 'user-other', 'MEMBER']]);
+});
+
+test('a plain team member is refused on every managed path', async () => {
+  const added: unknown[] = [];
+  const service = serviceWith({
+    addMember: async (...args: unknown[]) => {
+      added.push(args);
+    },
+    removeMember: async (...args: unknown[]) => {
+      added.push(args);
+    },
+  });
+  // Belonging to a team is not leading it: the guard must reject role MEMBER, not merely null.
+  await assert.rejects(
+    () => service.addMember(plain, 'team-a', 'user-x'),
+    forbidden(/do not lead this team/i),
+  );
+  await assert.rejects(
+    () => service.removeMember(plain, 'team-a', 'user-lead'),
+    forbidden(/do not lead this team/i),
+  );
+  await assert.rejects(
+    () => service.setModelAccess(plain, 'team-a', ['model-1']),
+    forbidden(/do not lead this team/i),
+  );
+  assert.deepEqual(added, []);
+});
+
+test('a lead may add an ordinary member to their own team', async () => {
+  const added: unknown[] = [];
+  const service = serviceWith({
+    addMember: async (...args: unknown[]) => {
+      added.push(args);
+    },
+  });
+  await service.addMember(lead, 'team-a', 'user-x');
+  assert.deepEqual(added, [['team-a', 'user-x', 'MEMBER']]);
 });
 ```
 
@@ -1090,6 +1179,22 @@ As private methods on `TeamService`:
     if (member?.role !== 'LEAD') throw new ForbiddenError('You do not lead this team');
   }
 
+  /**
+   * A lead's membership row is admin-only whichever way it is written. Without this, a lead
+   * could re-POST a peer lead as MEMBER — the upsert would demote them — and then remove them,
+   * defeating the appoint/remove rules in two calls.
+   */
+  private async assertMayTouchLead(
+    context: AuthContext,
+    teamId: string,
+    userId: string,
+    verb: 'change' | 'remove',
+  ): Promise<void> {
+    if (isInstanceAdmin(context)) return;
+    const target = await this.uow.repos.teams.findMember(teamId, userId);
+    if (target?.role === 'LEAD') throw new ForbiddenError(`Only an admin can ${verb} a team lead`);
+  }
+
   /** Only an admin appoints a lead — otherwise a lead could mint peers without oversight. */
   private assertMayAppoint(context: AuthContext, role: TeamRole): void {
     if (role === 'LEAD' && !isInstanceAdmin(context)) {
@@ -1097,6 +1202,16 @@ As private methods on `TeamService`:
     }
   }
 ```
+
+> **Correction — the original guard here was insecure.** An earlier draft of this plan had
+> `assertMayAppoint` as the *only* protection on `addMember`, and it refused just
+> `role === 'LEAD'`. Because the repository upsert does `update: { role }`, writing a *lower*
+> role onto someone who already was a lead went unguarded: a lead could re-POST a peer lead as
+> `MEMBER`, silently demoting them, then remove them — by which point `removeMember`'s inline
+> `target?.role === 'LEAD'` check saw an ordinary member. Two calls defeated "only an admin can
+> remove a team lead". The fix is `assertMayTouchLead`, keyed on the target row's *existing*
+> role and shared by both write paths, rather than a special case for demotion inside
+> `assertMayAppoint`. Do not revert this against an older draft.
 
 Then change the three mutating methods. `addMember` gains a `role` parameter, and both guards run
 *before* any write or gateway call:
@@ -1110,6 +1225,8 @@ Then change the three mutating methods. `addMember` gains a `role` parameter, an
   ): Promise<void> {
     this.assertMayAppoint(context, role);
     await this.assertCanManage(context, teamId);
+    // The upsert overwrites an existing row's role, so demotion is a write like any other.
+    await this.assertMayTouchLead(context, teamId, userId, 'change');
     const team = await this.require(teamId);
     await this.access.requireUser(userId);
 
@@ -1119,13 +1236,9 @@ Then change the three mutating methods. `addMember` gains a `role` parameter, an
 
   async removeMember(context: AuthContext, teamId: string, userId: string): Promise<void> {
     await this.assertCanManage(context, teamId);
-    const team = await this.require(teamId);
-
     // A lead may not remove a peer lead, for the same reason they may not appoint one.
-    const target = await this.uow.repos.teams.findMember(team.id, userId);
-    if (target?.role === 'LEAD' && !isInstanceAdmin(context)) {
-      throw new ForbiddenError('Only an admin can remove a team lead');
-    }
+    await this.assertMayTouchLead(context, teamId, userId, 'remove');
+    const team = await this.require(teamId);
     // ...rest unchanged...
   }
 
@@ -1142,7 +1255,7 @@ untouched and stay admin-only.
 - [ ] **Step 5: Run the tests to verify they pass**
 
 Run: `npm run -w apps/api test -- --test-name-pattern='lead'`
-Expected: PASS, all five.
+Expected: PASS, all nine.
 
 - [ ] **Step 6: Open the routes and carry the role over the wire**
 
