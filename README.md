@@ -120,6 +120,14 @@ dashboard. `docker compose up` plus `npm run seed` is the whole setup.
 It is a demo aid, not a feature: the answers are fabricated. The production compose file never sets
 the variable, and the API refuses to boot with `NODE_ENV=production` while it is on.
 
+### Examples
+
+[`examples/`](examples/) holds runnable scripts that issue a key through the API, call the gateway
+with it via `curl` and both vendor SDKs, and then demonstrate every way a call gets refused — an
+ungranted model, a revoked key, a rotated key, a disabled developer, an exhausted budget — printing
+the real status codes. The last one reads the resulting spend back out of `/api/usage`. They are
+localhost-only and safe to re-run. Start with [`examples/README.md`](examples/README.md).
+
 ## How it works
 
 ```text

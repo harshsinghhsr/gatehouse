@@ -1,0 +1,10 @@
+{
+  "name": "gatehouse-examples",
+  "private": true,
+  "description": "Runnable examples for Gatehouse. Deliberately outside the repo's workspaces: nothing here is a dependency of the product.",
+  "type": "module",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.68.0",
+    "openai": "^6.9.0"
+  }
+}
