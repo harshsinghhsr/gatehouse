@@ -28,6 +28,13 @@ export const teamController =
       return services.teams.get(id);
     });
 
+    // MEMBER is only the authentication floor; TeamService decides whether the caller manages
+    // this team, because that is a database read.
+    app.get('/teams/:id/candidates', { preHandler: guards('MEMBER') }, async (request) => {
+      const { id } = parse(idParamSchema, request.params);
+      return services.teams.listCandidates(authOf(request), id);
+    });
+
     app.delete('/teams/:id', { preHandler: guards('ADMIN') }, async (request, reply) => {
       const { id } = parse(idParamSchema, request.params);
       await services.teams.delete(authOf(request), id);

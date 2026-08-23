@@ -1,4 +1,10 @@
-import type { CreateTeamRequest, TeamDetail, TeamRole, TeamSummary } from '@gatehouse/shared';
+import type {
+  CreateTeamRequest,
+  TeamCandidate,
+  TeamDetail,
+  TeamRole,
+  TeamSummary,
+} from '@gatehouse/shared';
 import { ForbiddenError, NotFoundError } from '../../core/errors.js';
 import type { LlmGateway } from '../../core/gateway.js';
 import { slugify } from '../../core/slug.js';
@@ -51,6 +57,15 @@ export class TeamService {
       members,
       models: grants.map((grant) => ({ id: grant.providerModelId, publicModelName: grant.publicModelName })),
     };
+  }
+
+  /**
+   * Who a manager may still add. Deliberately narrower than `GET /developers`: a lead needs a
+   * name and an id to fill a dropdown, not the roster's budgets, grants and key counts.
+   */
+  async listCandidates(context: AuthContext, teamId: string): Promise<TeamCandidate[]> {
+    await this.assertCanManage(context, teamId);
+    return this.uow.repos.teams.listCandidates(teamId);
   }
 
   async create(context: AuthContext, request: CreateTeamRequest): Promise<TeamSummary> {

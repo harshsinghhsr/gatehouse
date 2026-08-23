@@ -2,6 +2,7 @@ import type {
   AddTeamMemberRequest,
   CreateTeamRequest,
   SetModelAccessRequest,
+  TeamCandidate,
   TeamDetail,
   TeamSummary,
 } from '@gatehouse/shared';
@@ -18,6 +19,14 @@ export function useTeam(id: string | null) {
     queryKey: queryKeys.team(id ?? 'none'),
     queryFn: () => api.get<TeamDetail>(`/api/teams/${id}`),
     enabled: id !== null,
+  });
+}
+
+/** Who the caller may still add. Team-scoped and lead-readable, unlike the admin-only roster. */
+export function useTeamCandidates(teamId: string) {
+  return useQuery({
+    queryKey: queryKeys.teamCandidates(teamId),
+    queryFn: () => api.get<TeamCandidate[]>(`/api/teams/${teamId}/candidates`),
   });
 }
 

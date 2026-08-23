@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { ForbiddenError } from '../../src/core/errors.js';
+import type { Db } from '../../src/infra/db/client.js';
 import type { AuditService } from '../../src/modules/audit/audit.service.js';
 import type { AuthContext } from '../../src/modules/auth/authenticator.js';
 import type { AccessService } from '../../src/modules/developers/access.service.js';
-import type { TeamRepository } from '../../src/modules/teams/team.repository.js';
+import { PrismaTeamRepository, type TeamRepository } from '../../src/modules/teams/team.repository.js';
 import { TeamService } from '../../src/modules/teams/team.service.js';
 import type { UserService } from '../../src/modules/users/user.service.js';
 import { autoStub, fakeGateway, fakeUnitOfWork, stubRepositories } from '../support/fakes.js';
@@ -178,4 +179,50 @@ test('a lead may add an ordinary member to their own team', async () => {
   });
   await service.addMember(lead, 'team-a', 'user-x');
   assert.deepEqual(added, [['team-a', 'user-x', 'MEMBER']]);
+});
+
+/** The picker feed: same authority as the mutations it precedes, and a much narrower payload. */
+const candidates = [{ id: 'user-x', name: 'X', email: 'x@example.com' }];
+
+function serviceWithCandidates() {
+  return serviceWith({ listCandidates: async () => candidates });
+}
+
+test('a lead may list candidates for their own team', async () => {
+  assert.deepEqual(await serviceWithCandidates().listCandidates(lead, 'team-a'), candidates);
+});
+
+test('an admin may list candidates for any team', async () => {
+  assert.deepEqual(await serviceWithCandidates().listCandidates(admin, 'team-b'), candidates);
+});
+
+test('a plain team member cannot list candidates', async () => {
+  await assert.rejects(
+    () => serviceWithCandidates().listCandidates(plain, 'team-a'),
+    forbidden(/do not lead this team/i),
+  );
+});
+
+test('a lead cannot list candidates for a team they do not lead', async () => {
+  await assert.rejects(
+    () => serviceWithCandidates().listCandidates(lead, 'team-b'),
+    forbidden(/do not lead this team/i),
+  );
+});
+
+test('the candidate query excludes existing members and non-ACTIVE users', async () => {
+  // Filtering belongs in the query, not in the service: proving the where clause is the only
+  // way to show the roster is never fetched and trimmed in memory.
+  let where: unknown;
+  const repository = new PrismaTeamRepository({
+    user: {
+      findMany: async (args: { where: unknown }) => {
+        where = args.where;
+        return [];
+      },
+    },
+  } as unknown as Db);
+
+  assert.deepEqual(await repository.listCandidates('team-a'), []);
+  assert.deepEqual(where, { status: 'ACTIVE', teamMembers: { none: { teamId: 'team-a' } } });
 });

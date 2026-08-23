@@ -1,4 +1,4 @@
-import type { TeamRole } from '@gatehouse/shared';
+import type { TeamCandidate, TeamRole } from '@gatehouse/shared';
 import type { Db } from '../../infra/db/client.js';
 import { onUniqueConflict } from '../../infra/db/conflicts.js';
 
@@ -18,6 +18,8 @@ export interface TeamRepository {
   listMembers(teamId: string): Promise<TeamMember[]>;
   findMember(teamId: string, userId: string): Promise<{ userId: string; role: TeamRole } | null>;
   listMemberIds(teamId: string): Promise<string[]>;
+  /** Active users who could still be added to this team. */
+  listCandidates(teamId: string): Promise<TeamCandidate[]>;
   create(input: { name: string; slug: string; litellmTeamId: string | null }): Promise<Team>;
   delete(id: string): Promise<void>;
   addMember(teamId: string, userId: string, role: TeamRole): Promise<void>;
@@ -67,6 +69,15 @@ export class PrismaTeamRepository implements TeamRepository {
   async listMemberIds(teamId: string): Promise<string[]> {
     const rows = await this.db.teamMember.findMany({ where: { teamId }, select: { userId: true } });
     return rows.map((row) => row.userId);
+  }
+
+  listCandidates(teamId: string): Promise<TeamCandidate[]> {
+    // Filtered in the query: the caller may only see who is addable, never the whole roster.
+    return this.db.user.findMany({
+      where: { status: 'ACTIVE', teamMembers: { none: { teamId } } },
+      select: { id: true, name: true, email: true },
+      orderBy: { name: 'asc' },
+    });
   }
 
   create(input: { name: string; slug: string; litellmTeamId: string | null }): Promise<Team> {

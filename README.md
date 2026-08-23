@@ -67,7 +67,7 @@ the LiteLLM endpoint underneath, so anything that speaks OpenAI or Anthropic spe
 | **Per-model access grants** | A developer or team reaches exactly the models they were granted. Models are namespaced per provider, registered as `{providerSlug}/gpt-5`, so two providers can both offer `gpt-5`. |
 | **Budgets that actually stop spend** | Monthly or daily caps per developer or per team, enforced by LiteLLM at request time — not a dashboard that emails you afterwards. |
 | **Usage and cost attribution** | Spend per developer, per team, per model, over any date range, priced by LiteLLM's own cost map. |
-| **Teams and RBAC** | Owner, admin, and member roles instance-wide; a team `LEAD` manages that team's own membership and model access via the API (the dashboard's member picker is admin-only today). `userId` and `role` always come from the session, never from the request. |
+| **Teams and RBAC** | Owner, admin, and member roles instance-wide; a team `LEAD` manages that team's own membership and model access from the dashboard as well as the API — the member picker reads `GET /teams/:id/candidates`, which returns only the names of people the caller may add to *that* team, never the roster. `userId` and `role` always come from the session, never from the request. |
 | **An audit log you can defend** | Every mutation and its audit row commit in the same transaction, with secret-shaped values scrubbed before they are written. |
 | **A connect page** | Copy-paste snippets with the developer's own base URL and model names, so onboarding is a link rather than a conversation. |
 

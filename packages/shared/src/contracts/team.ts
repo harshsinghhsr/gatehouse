@@ -25,3 +25,14 @@ export const teamDetailSchema = teamSummarySchema.extend({
   models: z.array(z.object({ id: z.string(), publicModelName: z.string() })),
 });
 export type TeamDetail = z.infer<typeof teamDetailSchema>;
+
+/**
+ * The Add-member picker, and nothing more. A team lead may read this, so it carries no budget,
+ * grant, key, role or status — only what is needed to name a person in a dropdown.
+ */
+export const teamCandidateSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  email: z.string(),
+});
+export type TeamCandidate = z.infer<typeof teamCandidateSchema>;

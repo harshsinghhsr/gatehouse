@@ -1,7 +1,6 @@
 import { type FormEvent, useState } from 'react';
 import { Badge, Empty, FormCard, PageHead, QueryState, Section, Table } from '../../shared/ui';
 import { useSession } from '../auth/queries';
-import { useDevelopers } from '../developers/queries';
 import { useModels } from '../models/queries';
 import {
   useAddTeamMember,
@@ -10,6 +9,7 @@ import {
   useRemoveTeamMember,
   useSetTeamModels,
   useTeam,
+  useTeamCandidates,
   useTeams,
 } from './queries';
 
@@ -87,7 +87,7 @@ export function TeamsPage() {
 
 function TeamEditor({ teamId }: { teamId: string }) {
   const team = useTeam(teamId);
-  const developers = useDevelopers();
+  const candidates = useTeamCandidates(teamId);
   const models = useModels();
 
   const session = useSession();
@@ -97,6 +97,7 @@ function TeamEditor({ teamId }: { teamId: string }) {
   const addMember = useAddTeamMember(teamId);
   const removeMember = useRemoveTeamMember(teamId);
   const setTeamModels = useSetTeamModels(teamId);
+  const hasCandidates = (candidates.data?.length ?? 0) > 0;
 
   return (
     <QueryState isPending={team.isPending} error={team.error}>
@@ -151,14 +152,18 @@ function TeamEditor({ teamId }: { teamId: string }) {
                   });
                 }}
               >
-                <select name="userId" aria-label="Add member" style={{ flex: 1 }}>
-                  {developers.data?.map((developer) => (
-                    <option key={developer.id} value={developer.id}>
-                      {developer.name} — {developer.email}
-                    </option>
-                  ))}
+                <select name="userId" aria-label="Add member" style={{ flex: 1 }} disabled={!hasCandidates}>
+                  {hasCandidates ? (
+                    candidates.data?.map((candidate) => (
+                      <option key={candidate.id} value={candidate.id}>
+                        {candidate.name} — {candidate.email}
+                      </option>
+                    ))
+                  ) : (
+                    <option value="">Everyone already belongs to this team</option>
+                  )}
                 </select>
-                <button type="submit" disabled={addMember.isPending}>
+                <button type="submit" disabled={addMember.isPending || !hasCandidates}>
                   Add
                 </button>
               </form>

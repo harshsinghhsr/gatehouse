@@ -19,6 +19,8 @@ export const queryKeys = {
 
   teams: ['teams'] as const,
   team: (id: string) => ['teams', id] as const,
+  // Nested under the team so invalidating the team refreshes the picker too.
+  teamCandidates: (id: string) => ['teams', id, 'candidates'] as const,
 
   usage: (range: DateRange) => ['usage', range] as const,
   usageByModel: (range: DateRange) => ['usage', 'models', range] as const,
