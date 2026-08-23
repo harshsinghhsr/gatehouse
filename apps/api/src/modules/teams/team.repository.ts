@@ -12,7 +12,8 @@ export type Team = {
 export type TeamMember = { id: string; name: string; email: string; role: TeamRole };
 
 export interface TeamRepository {
-  list(): Promise<Array<Team & { memberCount: number }>>;
+  /** Every team, each carrying the viewer's own membership role in it (null when not a member). */
+  list(viewerId: string): Promise<Array<Team & { memberCount: number; viewerRole: TeamRole | null }>>;
   findById(id: string): Promise<Team | null>;
   listForUser(userId: string): Promise<Team[]>;
   listMembers(teamId: string): Promise<TeamMember[]>;
@@ -31,12 +32,21 @@ const SELECT = { id: true, name: true, slug: true, litellmTeamId: true } as cons
 export class PrismaTeamRepository implements TeamRepository {
   constructor(private readonly db: Db) {}
 
-  async list() {
+  async list(viewerId: string) {
+    // The viewer's own membership rides along in the same query — one round-trip, not one per team.
     const rows = await this.db.team.findMany({
-      select: { ...SELECT, _count: { select: { members: true } } },
+      select: {
+        ...SELECT,
+        _count: { select: { members: true } },
+        members: { where: { userId: viewerId }, select: { role: true } },
+      },
       orderBy: { createdAt: 'asc' },
     });
-    return rows.map(({ _count, ...team }) => ({ ...team, memberCount: _count.members }));
+    return rows.map(({ _count, members, ...team }) => ({
+      ...team,
+      memberCount: _count.members,
+      viewerRole: members[0]?.role ?? null,
+    }));
   }
 
   findById(id: string): Promise<Team | null> {

@@ -226,3 +226,71 @@ test('the candidate query excludes existing members and non-ACTIVE users', async
   assert.deepEqual(await repository.listCandidates('team-a'), []);
   assert.deepEqual(where, { status: 'ACTIVE', teamMembers: { none: { teamId: 'team-a' } } });
 });
+
+/**
+ * `viewerRole` on the team list. It is what the dashboard uses to decide whether the viewer may
+ * manage a given team, so a non-member must read as null rather than as an absent field.
+ */
+const listRows = [
+  { id: 'team-a', name: 'A', slug: 'a', litellmTeamId: null, memberCount: 2, viewerRole: 'LEAD' as const },
+  { id: 'team-b', name: 'B', slug: 'b', litellmTeamId: null, memberCount: 0, viewerRole: null },
+];
+
+test('the team list reports the caller’s own role in each team', async () => {
+  let askedFor: string | undefined;
+  const service = serviceWith({
+    list: async (viewerId: string) => {
+      askedFor = viewerId;
+      return listRows;
+    },
+  });
+
+  assert.deepEqual(await service.list(lead), [
+    { id: 'team-a', name: 'A', slug: 'a', memberCount: 2, viewerRole: 'LEAD' },
+    { id: 'team-b', name: 'B', slug: 'b', memberCount: 0, viewerRole: null },
+  ]);
+  // The viewer comes from the session, never from the request.
+  assert.equal(askedFor, 'user-lead');
+});
+
+test('an admin who belongs to no team still sees viewerRole null', async () => {
+  // Instance authority is not team membership: the row states the membership fact, and the
+  // client combines it with the instance role. Conflating them here would lie about the team.
+  const service = serviceWith({ list: async () => listRows.map((row) => ({ ...row, viewerRole: null })) });
+  assert.deepEqual(
+    (await service.list(admin)).map((team) => team.viewerRole),
+    [null, null],
+  );
+});
+
+test('a fresh team the caller created is not a team they belong to', async () => {
+  const service = serviceWith({
+    create: async () => ({ id: 'team-new', name: 'New', slug: 'new', litellmTeamId: 'gw-1' }),
+  });
+  assert.deepEqual(await service.create(admin, { name: 'New' }), {
+    id: 'team-new',
+    name: 'New',
+    slug: 'new',
+    memberCount: 0,
+    viewerRole: null,
+  });
+});
+
+test('the list query reads the viewer’s membership in one round-trip', async () => {
+  // N+1 here would mean a membership query per team; proving the select carries the filtered
+  // members relation is the only way to show it is a single findMany.
+  let args: { select?: Record<string, unknown> } = {};
+  const repository = new PrismaTeamRepository({
+    team: {
+      findMany: async (received: { select?: Record<string, unknown> }) => {
+        args = received;
+        return [{ id: 't', name: 'T', slug: 't', litellmTeamId: null, _count: { members: 3 }, members: [] }];
+      },
+    },
+  } as unknown as Db);
+
+  assert.deepEqual(await repository.list('user-plain'), [
+    { id: 't', name: 'T', slug: 't', litellmTeamId: null, memberCount: 3, viewerRole: null },
+  ]);
+  assert.deepEqual(args.select?.members, { where: { userId: 'user-plain' }, select: { role: true } });
+});

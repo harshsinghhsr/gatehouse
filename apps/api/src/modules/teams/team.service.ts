@@ -32,13 +32,14 @@ export class TeamService {
     private readonly audit: AuditService,
   ) {}
 
-  async list(): Promise<TeamSummary[]> {
-    const teams = await this.uow.repos.teams.list();
+  async list(context: AuthContext): Promise<TeamSummary[]> {
+    const teams = await this.uow.repos.teams.list(context.userId);
     return teams.map((team) => ({
       id: team.id,
       name: team.name,
       slug: team.slug,
       memberCount: team.memberCount,
+      viewerRole: team.viewerRole,
     }));
   }
 
@@ -85,7 +86,8 @@ export class TeamService {
       return created;
     });
 
-    return { id: team.id, name: team.name, slug: team.slug, memberCount: 0 };
+    // Creating a team does not join it, so the creator is not a member of it.
+    return { id: team.id, name: team.name, slug: team.slug, memberCount: 0, viewerRole: null };
   }
 
   async delete(context: AuthContext, id: string): Promise<void> {

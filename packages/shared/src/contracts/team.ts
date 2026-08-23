@@ -10,15 +10,24 @@ export const addTeamMemberRequestSchema = z.object({
 });
 export type AddTeamMemberRequest = z.infer<typeof addTeamMemberRequestSchema>;
 
-export const teamSummarySchema = z.object({
+const teamBaseSchema = z.object({
   id: z.string(),
   name: z.string(),
   slug: z.string(),
   memberCount: z.number().int(),
 });
+
+/**
+ * `viewerRole` is the caller's own role in this team, or null when they do not belong to it.
+ * The list is readable by every member, but who may manage a team is a per-team fact, so the
+ * row carries it rather than the client guessing from the instance role alone.
+ */
+export const teamSummarySchema = teamBaseSchema.extend({
+  viewerRole: teamRoleSchema.nullable(),
+});
 export type TeamSummary = z.infer<typeof teamSummarySchema>;
 
-export const teamDetailSchema = teamSummarySchema.extend({
+export const teamDetailSchema = teamBaseSchema.extend({
   members: z.array(
     z.object({ id: z.string(), name: z.string(), email: z.string(), role: teamRoleSchema }),
   ),
