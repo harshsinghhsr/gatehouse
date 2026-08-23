@@ -14,6 +14,13 @@
   <img src="https://img.shields.io/badge/self--hosted-yes-0f766e" alt="Self-hosted">
 </p>
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/dashboard-dark.png">
+    <img src="docs/assets/dashboard-light.png" alt="The Gatehouse overview: spend, requests and tokens metered by the gateway, with spend broken down per developer" width="900">
+  </picture>
+</p>
+
 ---
 
 ## The problem
@@ -130,14 +137,39 @@ localhost-only and safe to re-run. Start with [`examples/README.md`](examples/RE
 
 ## How it works
 
-```text
-browser ──▶ Gatehouse API ──▶ Postgres            users, teams, providers, catalog,
-             (Fastify)         │                  key references, budgets, audit
-                               ├──▶ Secrets Manager / file    provider credentials, by reference
-                               └──▶ LiteLLM admin API         keys, models, credentials, spend
+```mermaid
+flowchart LR
+    admin["Admin<br/>in the browser"]
+    sdk["Your developer's app<br/>OpenAI or Anthropic SDK"]
 
-developer SDK ─────────────▶ LiteLLM ──▶ Azure OpenAI / OpenAI / Anthropic
+    subgraph gatehouse["Gatehouse — what this repo is"]
+        web["Dashboard"]
+        api["API"]
+        db[("Postgres<br/>users, teams, providers, catalog,<br/>key references, budgets, audit")]
+        secrets[["Secrets Manager or file<br/>provider credentials"]]
+    end
+
+    subgraph gateway["LiteLLM — unmodified, pinned"]
+        proxy["Proxy"]
+        gwdb[("Its own database<br/>virtual keys, spend")]
+    end
+
+    vendors["Azure OpenAI<br/>OpenAI<br/>Anthropic"]
+
+    admin --> web
+    web -->|"same-origin /api"| api
+    api --> db
+    api -->|"stores a reference,<br/>never the secret"| secrets
+    api -->|"admin API: credentials,<br/>models, keys, budgets"| proxy
+    api -.->|"reads spend back"| proxy
+    proxy --- gwdb
+
+    sdk ==>|"gateway key"| proxy
+    proxy ==> vendors
 ```
+
+The thick arrows are the inference path. It starts at your developer's SDK and ends at the
+vendor — **Gatehouse is not on it.**
 
 Two properties fall out of this split, and both are deliberate:
 
@@ -223,6 +255,10 @@ clone, then builds the production images — so a green build means a fork can d
 
 ### How the code is organised
 
+<details>
+<summary><strong>Layout, layering rules, and the frontend design system</strong></summary>
+<br>
+
 The backend is layered, and the layers are enforced by what each one is allowed to import:
 
 ```text
@@ -247,6 +283,8 @@ The API runs TypeScript directly through `tsx`, in development and production al
 path, no build artifact to get stale. [CONTRIBUTING.md](CONTRIBUTING.md) has the rules that keep
 this workable.
 
+</details>
+
 ### Testing the AWS path without AWS
 
 Provider credentials can live in AWS Secrets Manager. To exercise that code path locally, run
@@ -262,6 +300,10 @@ The same `AwsSecretStore` class runs in both cases; only the endpoint differs. W
 locally is the production code path, not a mock of it.
 
 ## FAQ
+
+<details>
+<summary><strong>Common questions</strong> — forking LiteLLM, supported providers, SDKs, AWS, Docker, tenancy, license</summary>
+<br>
 
 **Does this fork or patch LiteLLM?** No. It runs the released image
 `ghcr.io/berriai/litellm:v1.97.0` and talks to its HTTP API. Gatehouse never touches LiteLLM's
@@ -287,6 +329,8 @@ per-model grants control who reaches what, and models are namespaced per provide
 can both offer `gpt-5`.
 
 **What is the license?** Apache-2.0, including for commercial and internal use.
+
+</details>
 
 ## Roadmap
 
