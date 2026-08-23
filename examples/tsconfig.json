@@ -1,0 +1,10 @@
+{
+  "// ": "The operator examples import the wire contract from packages/shared by relative path, so a payload change breaks this typecheck instead of drifting silently. That is also why this folder stays out of the workspaces: the import needs no install, but openai and @anthropic-ai/sdk do.",
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["node"],
+    "lib": ["ES2023", "DOM"]
+  },
+  "include": ["developer/**/*.ts", "operator/**/*.ts"]
+}

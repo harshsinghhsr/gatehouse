@@ -129,11 +129,15 @@ the variable, and the API refuses to boot with `NODE_ENV=production` while it is
 
 ### Examples
 
-[`examples/`](examples/) holds runnable scripts that issue a key through the API, call the gateway
-with it via `curl` and both vendor SDKs, and then demonstrate every way a call gets refused — an
-ungranted model, a revoked key, a rotated key, a disabled developer, an exhausted budget — printing
-the real status codes. The last one reads the resulting spend back out of `/api/usage`. They are
-localhost-only and safe to re-run. Start with [`examples/README.md`](examples/README.md).
+[`examples/`](examples/) is split by reader. `developer/` is for someone who was handed a key:
+a chat completion through the official OpenAI and Anthropic SDKs, a streaming one, and the same
+call in `curl` — all straight to the proxy, since Gatehouse is not in the request path.
+`operator/` is for whoever runs the instance: `onboard-developer.ts` walks the whole workflow in
+one file (create a developer, grant models, set a budget, mint a key), alongside key rotation and
+reading spend back out of `/api/usage`. Every file is standalone TypeScript run with `tsx`; the
+operator ones are localhost-only and safe to re-run. The status codes a refused call returns are
+documented in [`examples/README.md`](examples/README.md) and proved by
+`apps/api/test/integration/enforcement.test.ts`.
 
 ## How it works
 

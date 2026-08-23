@@ -63,11 +63,11 @@ The backend is layered. Each rule below exists because breaking it caused a real
     # ENABLE_MOCK_PROVIDER=true (dev compose only) adds a MOCK provider type whose models answer
     # from LiteLLM's mock_response: no vendor, no API key, but real spend and token metering, so
     # `npm run seed` also generates traffic and the dashboard has numbers. Boot refuses it in production.
-    cd examples && npm install && node 1-issue-key.mjs   # issue a key, call the gateway, see it refused
+    cd examples && npm install && npx tsx operator/onboard-developer.ts   # create a developer, grant models, mint a key
     docker compose --profile aws up -d floci   # AWS stand-in for the Secrets Manager path
     docker compose -f docker-compose.prod.yml up -d --build   # the deployment stack
 
-    npm run typecheck                      # every workspace
+    npm run typecheck                      # every workspace, plus examples/ if installed
     npm test                               # unit + HTTP tests, no services needed
     INTEGRATION=1 npm run -w apps/api test # adds the acceptance and AWS contract tests
 
@@ -87,4 +87,4 @@ The backend is layered. Each rule below exists because breaking it caused a real
     litellm/                 config.yaml (settings only) + pinned openapi snapshot
     infrastructure/docker/   images, nginx config, the boot entrypoint
     scripts/setup-env.sh     generates .env; the first thing a fork runs
-    examples/                runnable demos: issue a key, call the gateway, watch it be refused
+    examples/                developer/ (you have a key) and operator/ (you run Gatehouse); outside the workspaces

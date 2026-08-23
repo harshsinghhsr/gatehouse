@@ -39,7 +39,8 @@
   "scripts": {
     "setup": "./scripts/setup-env.sh",
     "seed": "tsx scripts/seed-dev.ts",
-    "typecheck": "npm run typecheck --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present && npm run typecheck:examples",
+    "typecheck:examples": "if [ -d examples/node_modules ]; then npm --prefix examples run typecheck; else echo 'examples: skipped, run npm install in examples/'; fi",
     "test": "npm run test --workspaces --if-present"
   },
   "devDependencies": {
