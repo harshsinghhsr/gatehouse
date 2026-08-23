@@ -95,6 +95,19 @@ the instance and its owner. Sign-up closes itself afterwards; admins add everyon
 Then: add a provider → add a model → add a developer → grant models → create a key → open
 **Connect** for the snippets. `curl localhost:3001/ready` reports the health of every dependency.
 
+To fill a fresh development instance with something to look at — the owner account, a spread of
+roles and statuses, teams with and without a lead, budgets, and keys in every state — run:
+
+```bash
+npm run seed        # local instances only; prints the accounts and their password
+```
+
+The seed drives the same HTTP API the dashboard does, so everything it creates is validated,
+synchronised to LiteLLM, and audited. It is safe to re-run: it reuses what already exists.
+Providers are verified against the real vendor at creation time, so it only seeds them when you
+supply working keys through `SEED_OPENAI_API_KEY`, `SEED_ANTHROPIC_API_KEY`, or `SEED_AZURE_API_KEY`;
+without them it seeds everything else and says which providers it skipped.
+
 ## How it works
 
 ```text

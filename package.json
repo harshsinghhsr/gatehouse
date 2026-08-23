@@ -38,6 +38,7 @@
   },
   "scripts": {
     "setup": "./scripts/setup-env.sh",
+    "seed": "tsx scripts/seed-dev.ts",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run test --workspaces --if-present"
   },
