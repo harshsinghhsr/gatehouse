@@ -38,11 +38,13 @@ export function useUsageByProvider(range: DateRange = {}) {
   });
 }
 
-export function useUsageByDeveloper(range: DateRange = {}) {
+/** Admin-only on the server. `enabled` lets a page skip the request rather than collect a 403. */
+export function useUsageByDeveloper(range: DateRange = {}, enabled = true) {
   return useQuery({
     queryKey: queryKeys.usageByDeveloper(range),
     queryFn: () => api.get<DeveloperUsageRow[]>(withRange('/api/usage/developers', range)),
     staleTime: USAGE_STALE_MS,
+    enabled,
   });
 }
 

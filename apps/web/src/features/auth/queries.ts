@@ -12,6 +12,15 @@ export function useSession() {
   });
 }
 
+/**
+ * Instance authority, in one place. OWNER and ADMIN reach every admin surface; MEMBER — lead or
+ * not — does not. Per-team authority is a different question, answered by `team.viewerRole`.
+ */
+export function useIsAdmin(): boolean {
+  const { data } = useSession();
+  return data?.role === 'OWNER' || data?.role === 'ADMIN';
+}
+
 export function useSignIn() {
   const queryClient = useQueryClient();
   return useMutation({

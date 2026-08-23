@@ -16,7 +16,7 @@ import { SettingsPage } from '../features/settings/SettingsPage';
 import { TeamsPage } from '../features/teams/TeamsPage';
 import { UsagePage } from '../features/usage/UsagePage';
 import { DashboardLayout } from './DashboardLayout';
-import { RequireAuth } from './RequireAuth';
+import { RequireAdmin, RequireAuth } from './RequireAuth';
 
 /**
  * One QueryClient for the app. Retrying an authentication failure would only produce three
@@ -48,18 +48,23 @@ export function App() {
             }
           >
             <Route path="/dashboard" element={<DashboardPage />} />
-            <Route path="/providers" element={<ProvidersPage />} />
-            <Route path="/providers/new" element={<NewProviderPage />} />
-            <Route path="/providers/:id" element={<ProviderDetailPage />} />
-            <Route path="/models" element={<ModelsPage />} />
-            <Route path="/developers" element={<DevelopersPage />} />
-            <Route path="/developers/:id" element={<DeveloperDetailPage />} />
             <Route path="/teams" element={<TeamsPage />} />
             <Route path="/usage" element={<UsagePage />} />
-            <Route path="/budgets" element={<BudgetsPage />} />
             <Route path="/connect" element={<ConnectPage />} />
-            <Route path="/audit-logs" element={<AuditLogPage />} />
             <Route path="/settings" element={<SettingsPage />} />
+
+            {/* Instance administration. Hidden from the tabs and refused here as well, so a
+                typed URL explains itself instead of rendering a page of failed requests. */}
+            <Route element={<RequireAdmin />}>
+              <Route path="/providers" element={<ProvidersPage />} />
+              <Route path="/providers/new" element={<NewProviderPage />} />
+              <Route path="/providers/:id" element={<ProviderDetailPage />} />
+              <Route path="/models" element={<ModelsPage />} />
+              <Route path="/developers" element={<DevelopersPage />} />
+              <Route path="/developers/:id" element={<DeveloperDetailPage />} />
+              <Route path="/budgets" element={<BudgetsPage />} />
+              <Route path="/audit-logs" element={<AuditLogPage />} />
+            </Route>
           </Route>
 
           <Route path="*" element={<Navigate to="/dashboard" replace />} />

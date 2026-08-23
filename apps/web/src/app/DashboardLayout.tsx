@@ -2,22 +2,30 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { Mark } from '../shared/ui';
 import { applyTheme, readTheme, type Theme } from '../shared/lib/theme';
-import { useSession, useSignOut } from '../features/auth/queries';
+import { useIsAdmin, useSession, useSignOut } from '../features/auth/queries';
 
+/**
+ * `admin` marks a surface where every action needs instance authority. Providers and Models do
+ * have member-readable lists, but every button on them is admin-only, and a page of dead buttons
+ * reads as a broken app rather than a locked one — so they are hidden, not disabled.
+ */
 const TABS = [
   { to: '/dashboard', label: 'Overview' },
   { to: '/usage', label: 'Usage' },
-  { to: '/providers', label: 'Providers' },
-  { to: '/models', label: 'Models' },
-  { to: '/developers', label: 'Developers' },
+  { to: '/providers', label: 'Providers', admin: true },
+  { to: '/models', label: 'Models', admin: true },
+  { to: '/developers', label: 'Developers', admin: true },
   { to: '/teams', label: 'Teams' },
-  { to: '/budgets', label: 'Budgets' },
+  { to: '/budgets', label: 'Budgets', admin: true },
   { to: '/connect', label: 'Connect' },
-  { to: '/audit-logs', label: 'Audit log' },
+  { to: '/audit-logs', label: 'Audit log', admin: true },
   { to: '/settings', label: 'Settings' },
 ];
 
 export function DashboardLayout() {
+  const isAdmin = useIsAdmin();
+  const tabs = TABS.filter((tab) => isAdmin || !tab.admin);
+
   return (
     <div className="shell">
       <header className="topbar">
@@ -37,7 +45,7 @@ export function DashboardLayout() {
 
       <nav className="tabs" aria-label="Sections">
         <div className="bar-inner">
-          {TABS.map((tab) => (
+          {tabs.map((tab) => (
             <NavLink key={tab.to} to={tab.to} className={({ isActive }) => (isActive ? 'tab active' : 'tab')}>
               {tab.label}
             </NavLink>
