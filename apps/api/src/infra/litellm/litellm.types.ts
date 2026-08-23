@@ -27,7 +27,10 @@ export type NewModelResponse = { model_info?: { id?: string } };
 
 export type ActivityMetrics = {
   spend?: number;
+  /** Every call the gateway saw, refusals included — which is why it is not what we report. */
   api_requests?: number;
+  successful_requests?: number;
+  failed_requests?: number;
   prompt_tokens?: number;
   completion_tokens?: number;
 };

@@ -115,13 +115,36 @@ test('a key carries both the namespaced and the public model name', async () => 
   });
 });
 
-test('the budget on the developer becomes the budget on the key', async () => {
-  const { access } = setup();
-  const spec = await access.buildKeySpec('user-1', 'alias');
+test("the developer's budget is set on the gateway user, not on the key", async () => {
+  const { access, gateway } = setup();
 
-  assert.equal(spec.maxBudget, 50);
-  assert.equal(spec.budgetDuration, '30d');
-  assert.equal(spec.rpmLimit, 60);
+  await access.buildKeySpec('user-1', 'alias');
+
+  const budgetCall = gateway.calls.find((call) => call.method === 'setUserBudget');
+  assert.ok(budgetCall, 'the ceiling must be pushed to the mirrored gateway user');
+  assert.deepEqual(budgetCall.args, [
+    'gw-user',
+    { maxBudget: 50, budgetDuration: '30d', rpmLimit: 60, tpmLimit: undefined },
+  ]);
+});
+
+test('every key a developer holds draws on one shared allowance', async () => {
+  const { keys, gateway } = setup();
+
+  // Two keys for the same developer. If either carried a budget of its own, the developer's
+  // ceiling would be multiplied by the number of keys they happen to hold.
+  await keys.issue(context, 'user-1');
+  await keys.issue(context, 'user-1');
+
+  const specs = gateway.calls.filter((call) => call.method === 'issueKey').map((call) => call.args[0]);
+  assert.equal(specs.length, 2);
+  for (const spec of specs) {
+    assert.deepEqual(
+      Object.keys(spec as object).sort(),
+      ['aliases', 'alias', 'gatewayUserId', 'models'].sort(),
+      'a key spec must carry no budget of its own',
+    );
+  }
 });
 
 test('a developer with no grants gets a key that can call nothing', async () => {

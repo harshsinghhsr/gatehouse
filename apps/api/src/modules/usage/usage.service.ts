@@ -38,6 +38,7 @@ export class UsageService {
         range: { from, to },
         spend: report.totalSpend,
         requests: report.totalRequests,
+        failedRequests: report.totalFailedRequests,
         inputTokens: report.inputTokens,
         outputTokens: report.outputTokens,
         activeDevelopers,
@@ -89,6 +90,7 @@ export class UsageService {
             email: user?.email ?? '',
             spend: report?.totalSpend ?? 0,
             requests: report?.totalRequests ?? 0,
+            failedRequests: report?.totalFailedRequests ?? 0,
           };
         }),
       );
@@ -163,7 +165,9 @@ export function resolveRange(range: DateRange): { from: string; to: string } {
 
 const isoDate = (date: Date) => date.toISOString().slice(0, 10);
 
-const toRows = (buckets: Record<string, { spend: number; requests: number }>): UsageBreakdownRow[] =>
+const toRows = (
+  buckets: Record<string, { spend: number; requests: number; failedRequests: number }>,
+): UsageBreakdownRow[] =>
   Object.entries(buckets)
     .map(([name, bucket]) => ({ name, ...bucket }))
     .sort((a, b) => b.spend - a.spend);

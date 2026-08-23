@@ -6,6 +6,7 @@ import type {
   LlmGateway,
   UsageBucket,
   UsageReport,
+  UserBudgetSpec,
 } from '../../core/gateway.js';
 import type { Logger } from '../../core/ports.js';
 import type * as wire from './litellm.types.js';
@@ -123,6 +124,20 @@ export class LiteLlmGateway implements LlmGateway {
     return response.user_id;
   }
 
+  /**
+   * One allowance per developer, shared by every key they hold. Nulls clear a previous ceiling
+   * rather than leaving it in force when a budget is removed.
+   */
+  async setUserBudget(gatewayUserId: string, budget: UserBudgetSpec): Promise<void> {
+    await this.call('POST', '/user/update', {
+      user_id: gatewayUserId,
+      max_budget: budget.maxBudget ?? null,
+      budget_duration: budget.budgetDuration ?? null,
+      rpm_limit: budget.rpmLimit ?? null,
+      tpm_limit: budget.tpmLimit ?? null,
+    });
+  }
+
   async createTeam(name: string): Promise<string> {
     const response = await this.call<wire.NewTeamResponse>('POST', '/team/new', {
       team_alias: name,
@@ -212,10 +227,13 @@ function toKeyPayload(spec: KeySpec): Record<string, unknown> {
     team_id: spec.gatewayTeamId,
     models: [...new Set([...spec.models, ...publicNames])],
     aliases: spec.aliases,
-    max_budget: spec.maxBudget,
-    budget_duration: spec.budgetDuration,
-    rpm_limit: spec.rpmLimit,
-    tpm_limit: spec.tpmLimit,
+    // Budgets live on the gateway user, not here. Sent as explicit nulls rather than omitted so
+    // a key issued before that change gets its old per-key ceiling cleared on the next sync,
+    // instead of quietly enforcing a second allowance underneath the user-level one.
+    max_budget: null,
+    budget_duration: null,
+    rpm_limit: null,
+    tpm_limit: null,
   };
 }
 
@@ -225,23 +243,29 @@ function toUsageReport(response: wire.DailyActivityResponse): UsageReport {
     const totals: Record<string, UsageBucket> = {};
     for (const day of days) {
       for (const [name, entry] of Object.entries(day.breakdown?.[dimension] ?? {})) {
-        const bucket = (totals[name] ??= { spend: 0, requests: 0 });
+        const bucket = (totals[name] ??= { spend: 0, requests: 0, failedRequests: 0 });
         bucket.spend += entry.metrics?.spend ?? 0;
-        bucket.requests += entry.metrics?.api_requests ?? 0;
+        bucket.requests += entry.metrics?.successful_requests ?? 0;
+        bucket.failedRequests += entry.metrics?.failed_requests ?? 0;
       }
     }
     return totals;
   };
 
+  // metadata.total_api_requests counts refusals too, so a key denied a model would read as
+  // traffic. Sum the per-day successful and failed counters instead and report them apart.
+  const sum = (pick: (day: (typeof days)[number]) => number) => days.reduce((total, day) => total + pick(day), 0);
+
   return {
     totalSpend: response.metadata?.total_spend ?? 0,
-    totalRequests: response.metadata?.total_api_requests ?? 0,
+    totalRequests: sum((day) => day.metrics?.successful_requests ?? 0),
+    totalFailedRequests: sum((day) => day.metrics?.failed_requests ?? 0),
     inputTokens: days.reduce((sum, day) => sum + (day.metrics?.prompt_tokens ?? 0), 0),
     outputTokens: days.reduce((sum, day) => sum + (day.metrics?.completion_tokens ?? 0), 0),
     daily: days.map((day) => ({
       date: day.date,
       spend: day.metrics?.spend ?? 0,
-      requests: day.metrics?.api_requests ?? 0,
+      requests: day.metrics?.successful_requests ?? 0,
     })),
     byModel: accumulate('models'),
     byProvider: accumulate('providers'),

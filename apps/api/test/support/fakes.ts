@@ -58,6 +58,7 @@ export function fakeGateway(overrides: Partial<LlmGateway> = {}): LlmGateway & {
   const emptyUsage: UsageReport = {
     totalSpend: 0,
     totalRequests: 0,
+    totalFailedRequests: 0,
     inputTokens: 0,
     outputTokens: 0,
     daily: [],
@@ -72,6 +73,7 @@ export function fakeGateway(overrides: Partial<LlmGateway> = {}): LlmGateway & {
     updateKey: record('updateKey', undefined),
     revokeKeyByAlias: record('revokeKeyByAlias', undefined),
     readKeyUsage: record('readKeyUsage', { spend: 0, maxBudget: null }),
+    setUserBudget: record('setUserBudget', undefined),
     createUser: record('createUser', 'gw-user'),
     createTeam: record('createTeam', 'gw-team'),
     addTeamMember: record('addTeamMember', undefined),

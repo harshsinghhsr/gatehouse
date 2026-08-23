@@ -6,7 +6,9 @@ import { budgetPeriodSchema } from './common.js';
 export const usageTotalsSchema = z.object({
   range: z.object({ from: z.string(), to: z.string() }),
   spend: z.number(),
+  /** Calls the gateway served. A refusal is not usage, so it is counted separately. */
   requests: z.number(),
+  failedRequests: z.number(),
   inputTokens: z.number(),
   outputTokens: z.number(),
   activeDevelopers: z.number().int(),
@@ -19,6 +21,7 @@ export const usageBreakdownRowSchema = z.object({
   name: z.string(),
   spend: z.number(),
   requests: z.number(),
+  failedRequests: z.number(),
 });
 export type UsageBreakdownRow = z.infer<typeof usageBreakdownRowSchema>;
 
@@ -28,6 +31,7 @@ export const developerUsageRowSchema = z.object({
   email: z.string(),
   spend: z.number(),
   requests: z.number(),
+  failedRequests: z.number(),
 });
 export type DeveloperUsageRow = z.infer<typeof developerUsageRowSchema>;
 
