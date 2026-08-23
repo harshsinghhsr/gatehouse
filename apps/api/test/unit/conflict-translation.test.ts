@@ -101,3 +101,36 @@ test('any other failure passes through untouched', async () => {
 test('a successful write is returned unchanged', async () => {
   assert.equal(await onUniqueConflict({}, async () => 'ok'), 'ok');
 });
+
+test('the hand-written NULLS NOT DISTINCT index reports quoted subject columns', async () => {
+  // Budget_subject_key is raw SQL Prisma does not know about, so it is reported the same way any
+  // other index is: the pg adapter names its columns, quoted, in order. Verified against the
+  // running Postgres — a second budget for one developer is a 409, not a silent duplicate row.
+  await assert.rejects(
+    () =>
+      onUniqueConflict({ userId: 'This budget was just changed by someone else. Reload and try again.' }, () =>
+        Promise.reject(p2002ViaAdapter(['"userId"', '"teamId"'])),
+      ),
+    (error: unknown) => {
+      assert.ok(error instanceof ConflictError);
+      assert.equal(error.message, 'This budget was just changed by someone else. Reload and try again.');
+      return true;
+    },
+  );
+});
+
+test('an unlabelled subject column does not shadow the labelled one after it', async () => {
+  // ModelAccess_subject_key reports ("userId", "teamId", "providerModelId"): the message must come
+  // from the model, not from the first column in the index.
+  await assert.rejects(
+    () =>
+      onUniqueConflict({ providerModelId: 'This access list was just changed by someone else.' }, () =>
+        Promise.reject(p2002ViaAdapter(['"userId"', '"teamId"', '"providerModelId"'])),
+      ),
+    (error: unknown) => {
+      assert.ok(error instanceof ConflictError);
+      assert.equal(error.message, 'This access list was just changed by someone else.');
+      return true;
+    },
+  );
+});

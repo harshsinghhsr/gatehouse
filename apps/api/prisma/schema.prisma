@@ -157,7 +157,13 @@ model ModelAccess {
   team          Team?         @relation(fields: [teamId], references: [id], onDelete: Cascade)
   providerModel ProviderModel @relation(fields: [providerModelId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, teamId, providerModelId])
+  // The real uniqueness constraint is the hand-written index "ModelAccess_subject_key"
+  // (migration harden_schema_invariants): UNIQUE (userId, teamId, providerModelId)
+  // NULLS NOT DISTINCT, which Prisma cannot express. A plain @@unique here would generate a
+  // second, weaker index that Postgres never enforces, because exactly one subject is NULL.
+  // The XOR itself is the CHECK constraint "ModelAccess_one_subject", also in that migration.
+  @@index([teamId])
+  @@index([providerModelId])
 }
 
 /// Reference to a LiteLLM virtual key. The key itself is shown once and never stored.
@@ -179,7 +185,11 @@ model GatewayKeyReference {
   user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
   team Team? @relation(fields: [teamId], references: [id], onDelete: Cascade)
 
+  // XOR over the subject: CHECK "GatewayKeyReference_one_subject", in migration
+  // harden_schema_invariants.
   @@index([status])
+  @@index([userId])
+  @@index([teamId])
 }
 
 model Budget {
@@ -196,7 +206,11 @@ model Budget {
   user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
   team Team? @relation(fields: [teamId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, teamId])
+  // The real uniqueness constraint is the hand-written index "Budget_subject_key"
+  // (migration harden_schema_invariants): UNIQUE (userId, teamId) NULLS NOT DISTINCT, which
+  // Prisma cannot express — a plain @@unique generates an index Postgres never enforces here.
+  // The XOR is the CHECK constraint "Budget_one_subject" in the same migration.
+  @@index([teamId])
 }
 
 model AuditLog {
@@ -211,4 +225,6 @@ model AuditLog {
   createdAt   DateTime @default(now())
 
   @@index([createdAt])
+  @@index([actorUserId])
+  @@index([targetType, targetId])
 }

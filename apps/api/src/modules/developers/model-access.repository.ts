@@ -1,3 +1,4 @@
+import { onUniqueConflict } from '../../infra/db/conflicts.js';
 import type { Db } from '../../infra/db/client.js';
 
 /** A model a principal is allowed to call. Absence of a grant means denied. */
@@ -31,6 +32,16 @@ const toDomain = (row: GrantRow): GrantedModel => ({
   publicModelName: row.providerModel.publicModelName,
   gatewayModelName: row.providerModel.litellmModelName,
 });
+
+/**
+ * Delete-then-insert is not atomic against a concurrent replace, and "ModelAccess_subject_key"
+ * (NULLS NOT DISTINCT, migration harden_schema_invariants) now rejects the duplicate instead of
+ * storing it. The pg adapter names the index's quoted columns, so the subject half is unlabelled
+ * and the model half carries the message.
+ */
+const SUBJECT_TAKEN = {
+  providerModelId: 'This access list was just changed by someone else. Reload and try again.',
+};
 
 /** A grant only counts while both the model and its provider are switched on. */
 const SERVING = { enabled: true, provider: { status: 'ACTIVE' as const } };
@@ -72,17 +83,22 @@ export class PrismaModelAccessRepository implements ModelAccessRepository {
     return rows.map(toDomain);
   }
 
+  /** Deduped: a request listing the same model twice is a well-formed request, not a conflict. */
   async replaceForUser(userId: string, providerModelIds: string[]): Promise<void> {
     await this.db.modelAccess.deleteMany({ where: { userId } });
-    await this.db.modelAccess.createMany({
-      data: providerModelIds.map((providerModelId) => ({ userId, providerModelId })),
-    });
+    await onUniqueConflict(SUBJECT_TAKEN, () =>
+      this.db.modelAccess.createMany({
+        data: [...new Set(providerModelIds)].map((providerModelId) => ({ userId, providerModelId })),
+      }),
+    );
   }
 
   async replaceForTeam(teamId: string, providerModelIds: string[]): Promise<void> {
     await this.db.modelAccess.deleteMany({ where: { teamId } });
-    await this.db.modelAccess.createMany({
-      data: providerModelIds.map((providerModelId) => ({ teamId, providerModelId })),
-    });
+    await onUniqueConflict(SUBJECT_TAKEN, () =>
+      this.db.modelAccess.createMany({
+        data: [...new Set(providerModelIds)].map((providerModelId) => ({ teamId, providerModelId })),
+      }),
+    );
   }
 }

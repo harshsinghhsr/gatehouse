@@ -1,4 +1,5 @@
 import type { BudgetPeriod } from '@gatehouse/shared';
+import { onUniqueConflict } from '../../infra/db/conflicts.js';
 import type { Db } from '../../infra/db/client.js';
 
 export type Budget = {
@@ -35,6 +36,9 @@ const SELECT = {
   tpmLimit: true,
 } as const;
 
+/** "Budget_subject_key" is reported by the pg adapter as its quoted columns: "userId", "teamId". */
+const SUBJECT_TAKEN = { userId: 'This budget was just changed by someone else. Reload and try again.' };
+
 type Row = Omit<Budget, 'maxBudget'> & { maxBudget: unknown };
 const toDomain = (row: Row): Budget => ({ ...row, maxBudget: Number(row.maxBudget) });
 
@@ -61,8 +65,11 @@ export class PrismaBudgetRepository implements BudgetRepository {
   }
 
   /**
-   * Not a Prisma upsert: the compound unique includes a nullable teamId, which Postgres
-   * treats as never equal, so the unique index cannot be targeted.
+   * Not a Prisma upsert: the constraint is the hand-written NULLS NOT DISTINCT index
+   * "Budget_subject_key" (migration harden_schema_invariants), which Prisma cannot express and
+   * therefore cannot target. The read-then-write is a race, so the insert is the loser's path:
+   * two concurrent PATCHes both see no row, one inserts, the other gets a P2002 that becomes a
+   * 409 instead of the second budget row that used to appear silently.
    */
   async upsertForUser(
     userId: string,
@@ -75,7 +82,9 @@ export class PrismaBudgetRepository implements BudgetRepository {
 
     const row = existing
       ? await this.db.budget.update({ where: { id: existing.id }, data: values, select: SELECT })
-      : await this.db.budget.create({ data: { userId, ...values }, select: SELECT });
+      : await onUniqueConflict(SUBJECT_TAKEN, () =>
+          this.db.budget.create({ data: { userId, ...values }, select: SELECT }),
+        );
     return toDomain(row);
   }
 }
