@@ -15,10 +15,11 @@
 </p>
 
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/dashboard-dark.png">
-    <img src="docs/assets/dashboard-light.png" alt="The Gatehouse overview: spend, requests and tokens metered by the gateway, with spend broken down per developer" width="900">
-  </picture>
+  <video src="https://github.com/user-attachments/assets/838fa14b-0d68-4dce-9d59-eee3abe0ddaf" width="900" controls></video>
+</p>
+
+<p align="center">
+  <em>Fifty-eight seconds: the problem, where Gatehouse sits, what it refuses, and what LiteLLM charges for.</em>
 </p>
 
 ---
@@ -77,6 +78,13 @@ the LiteLLM endpoint underneath, so anything that speaks OpenAI or Anthropic spe
 | **Teams and RBAC** | Owner, admin, and member roles instance-wide; a team `LEAD` manages that team's own membership and model access from the dashboard as well as the API — the member picker reads `GET /teams/:id/candidates`, which returns only the names of people the caller may add to *that* team, never the roster. `userId` and `role` always come from the session, never from the request. |
 | **An audit log you can defend** | Every mutation and its audit row commit in the same transaction, with secret-shaped values scrubbed before they are written. |
 | **A connect page** | Copy-paste snippets with the developer's own base URL and model names, so onboarding is a link rather than a conversation. |
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/dashboard-dark.png">
+    <img src="docs/assets/dashboard-light.png" alt="The Gatehouse overview: spend, requests and tokens metered by the gateway, with spend broken down per developer" width="900">
+  </picture>
+</p>
 
 ## Quickstart
 
@@ -182,20 +190,68 @@ Two properties fall out of this split, and both are deliberate:
 - **Gatehouse is never in the path of an LLM request.** If the control plane is down, inference
   keeps serving. It is a control plane, not a proxy in front of a proxy.
 
-## How this compares
+## Why not just run LiteLLM?
 
-| | Gatehouse | LiteLLM alone | Hosted gateways |
-| --- | --- | --- | --- |
-| Provider credentials | Never leave your infrastructure | Never leave your infrastructure | Uploaded to a vendor |
-| Issuing keys to people | Dashboard, with roles and an audit trail | Admin API or the built-in UI, single-tenant | Dashboard |
-| Teams and RBAC | Yes | Partial | Usually paid |
-| Data residency | Your Postgres, your VPC | Yours | Vendor's |
-| Cost | Free, Apache-2.0 | Free, MIT | Per-request or per-seat |
-| Runs without the internet | Yes, aside from the providers themselves | Yes | No |
+Often you should. LiteLLM open source is more capable than most comparisons admit: it already
+ships virtual keys, users, teams, budgets, rate limits, spend tracking, an admin UI, and
+per-user email-and-password login with invite links. For a handful of developers that is
+genuinely enough, and Gatehouse would be overhead.
 
-Gatehouse is **not** a LiteLLM replacement or fork, and does not reimplement anything LiteLLM
-already does — keys, budgets, rate limits, cost math, and routing all stay upstream. That is a
-maintenance decision as much as a technical one: when LiteLLM adds a provider, you get it.
+What changes the answer is *where LiteLLM stops being free*. The operational half — the half you
+need precisely when there are enough people that offboarding is a real event — is the half sold
+as Enterprise.
+
+| | LiteLLM open source | LiteLLM Enterprise | Gatehouse |
+| --- | :---: | :---: | :---: |
+| Gateway, 100+ providers, fallbacks | yes | yes | uses it |
+| Virtual keys, budgets, rate limits, cost math | yes | yes | uses it |
+| Users and teams, per-user login | yes | yes | its own |
+| Global roles (`proxy_admin`, `internal_user`) | yes | yes | its own |
+| **Audit log** | — | yes | **yes** |
+| **Team-level admin delegation** (`team_admin`) | — | yes | **yes** |
+| **Provider secrets in a secret manager** | — | yes | **yes** |
+| **Key rotation** | manual endpoint | scheduled | **on demand, no plaintext** |
+| Organizations, the outer tenant layer | — | yes | n/a, single-tenant by design |
+| SSO / SAML / OIDC | up to 5 users | yes | **on the roadmap** |
+| SCIM, JWT auth, IP allowlists, guardrails | — | yes | no |
+
+<sup>Checked against LiteLLM's own docs and pricing page on 2026-08-23. Enterprise is quoted
+annually against request capacity — there is no per-seat tier and no public price list.</sup>
+
+**The four rows in bold are the whole argument.** Gatehouse implements them in your own
+repository, under Apache-2.0, against endpoints that are unambiguously MIT:
+
+- **The audit log** is not merely present, it is atomic — the mutation and its audit row commit
+  inside the same transaction, so there is no window in which a change exists and the record of
+  it does not.
+- **Team-level delegation** means a team `LEAD` runs their own roster and model grants. Upstream
+  that is the `team_admin` role, and `team_admin` is a premium feature.
+- **Credential custody is architecturally different, not just cheaper.** Without the Enterprise
+  secret-manager integration, provider keys live inside LiteLLM's database, encrypted with
+  `LITELLM_SALT_KEY` — a value you can never rotate once models exist. Gatehouse puts the secret
+  in AWS Secrets Manager and stores only a *reference* in Postgres.
+- **Rotation never needs the plaintext.** We mint a new alias and delete the old one, because we
+  deliberately never stored the key we would otherwise have to present.
+
+There is a fifth reason that has nothing to do with price. LiteLLM's Enterprise gating largely
+lives *in MIT-licensed files*, and [issue #34241](https://github.com/BerriAI/litellm/issues/34241)
+documents eight features — organization management among them — gated only in the React frontend,
+with no backend enforcement at all. The boundary is an open question. A governance layer should
+not rest on a vendor's boolean flag whose legal status is unresolved; ours is code you own.
+
+### What Gatehouse does not replace
+
+If you need **SCIM provisioning, JWT auth, IP allowlists, or the guardrails suite**, that is
+Enterprise and Gatehouse does not pretend otherwise. **SSO is the exception**: it is the first item
+on the [roadmap](#roadmap), and the auth layer is isolated so it can be added without touching
+route code — but it is not built yet, so today it is a plan rather than a feature. Gatehouse also
+costs you a second Postgres and another service to operate. And it is **not** a LiteLLM
+replacement or fork: keys, budgets, rate limits, cost math, and routing all stay upstream, which
+is a maintenance decision as much as a technical one — when LiteLLM adds a provider, you get it.
+
+Against a **hosted gateway**, the trade is the usual one. Your provider credentials never leave
+your infrastructure, your spend data stays in your Postgres and your VPC, it runs with no internet
+access beyond the providers themselves, and it costs nothing per request or per seat.
 
 ## Deploying
 
