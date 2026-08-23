@@ -40,7 +40,13 @@ export function UsagePage() {
 
       <div className="grid grid-stats">
         <Stat label="Spend" value={usage.data ? formatMoney(usage.data.spend) : '—'} sub={`Last ${days} days`} />
-        <Stat label="Requests" value={usage.data ? formatCount(usage.data.requests) : '—'} />
+        <Stat
+          label="Requests"
+          value={usage.data ? formatCount(usage.data.requests) : '—'}
+          {...(usage.data && usage.data.failedRequests > 0
+            ? { sub: `${formatCount(usage.data.failedRequests)} refused` }
+            : {})}
+        />
         <Stat label="Input tokens" value={usage.data ? formatCompact(usage.data.inputTokens) : '—'} />
         <Stat label="Output tokens" value={usage.data ? formatCompact(usage.data.outputTokens) : '—'} />
       </div>

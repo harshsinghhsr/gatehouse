@@ -45,7 +45,13 @@ export function DashboardPage() {
 
       <div className="grid grid-stats">
         <Stat label="Total spend" value={value((d) => formatMoney(d.spend))} />
-        <Stat label="Requests" value={value((d) => formatCount(d.requests))} />
+        <Stat
+          label="Requests"
+          value={value((d) => formatCount(d.requests))}
+          {...(totals.data && totals.data.failedRequests > 0
+            ? { sub: `${formatCount(totals.data.failedRequests)} refused` }
+            : {})}
+        />
         <Stat label="Input tokens" value={value((d) => formatCompact(d.inputTokens))} />
         <Stat label="Output tokens" value={value((d) => formatCompact(d.outputTokens))} />
         <Stat label="Developers" value={value((d) => String(d.activeDevelopers))} />
@@ -55,7 +61,7 @@ export function DashboardPage() {
       {isAdmin && (
         <Section title="Spend by developer">
           <QueryState isPending={byDeveloper.isPending} error={byDeveloper.error}>
-            <Table head={['Developer', 'Share', '>Requests', '>Spend']}>
+            <Table head={['Developer', 'Share', '>Requests', '>Refused', '>Spend']}>
               {byDeveloper.data?.length === 0 && <FirstStep isAdmin />}
               {byDeveloper.data?.map((row) => (
                 <tr key={row.id}>
@@ -67,6 +73,7 @@ export function DashboardPage() {
                     <Meter ratio={row.spend / topSpend} />
                   </td>
                   <td className="num">{formatCount(row.requests)}</td>
+                  <td className="num">{row.failedRequests > 0 ? formatCount(row.failedRequests) : '—'}</td>
                   <td className="num">{formatMoney(row.spend)}</td>
                 </tr>
               ))}
@@ -78,13 +85,14 @@ export function DashboardPage() {
       <div className="grid grid-half">
         <Section title="Spend by model">
           <QueryState isPending={byModel.isPending} error={byModel.error}>
-            <Table head={['Model', '>Requests', '>Spend']}>
+            <Table head={['Model', '>Requests', '>Refused', '>Spend']}>
               {/* The only empty state a non-admin reaches, so it carries the first-run guidance. */}
               {byModel.data?.length === 0 && <FirstStep isAdmin={isAdmin} />}
               {byModel.data?.map((row) => (
                 <tr key={row.name}>
                   <td className="mono">{row.name}</td>
                   <td className="num">{formatCount(row.requests)}</td>
+                  <td className="num">{row.failedRequests > 0 ? formatCount(row.failedRequests) : '—'}</td>
                   <td className="num">{formatMoney(row.spend)}</td>
                 </tr>
               ))}
@@ -94,12 +102,13 @@ export function DashboardPage() {
 
         <Section title="Spend by provider">
           <QueryState isPending={byProvider.isPending} error={byProvider.error}>
-            <Table head={['Provider', '>Requests', '>Spend']}>
+            <Table head={['Provider', '>Requests', '>Refused', '>Spend']}>
               {byProvider.data?.length === 0 && <FirstStep isAdmin={isAdmin} />}
               {byProvider.data?.map((row) => (
                 <tr key={row.name}>
                   <td>{row.name}</td>
                   <td className="num">{formatCount(row.requests)}</td>
+                  <td className="num">{row.failedRequests > 0 ? formatCount(row.failedRequests) : '—'}</td>
                   <td className="num">{formatMoney(row.spend)}</td>
                 </tr>
               ))}
