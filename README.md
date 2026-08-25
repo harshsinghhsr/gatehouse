@@ -15,7 +15,7 @@
 </p>
 
 <p align="center">
-  <video src="https://github.com/user-attachments/assets/838fa14b-0d68-4dce-9d59-eee3abe0ddaf" width="900" controls></video>
+  <video src="https://github.com/harshsinghhsr/gatehouse/releases/download/v0.1.0/gatehouse.mp4" width="900" controls></video>
 </p>
 
 <p align="center">
