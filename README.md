@@ -14,9 +14,7 @@
   <img src="https://img.shields.io/badge/self--hosted-yes-0f766e" alt="Self-hosted">
 </p>
 
-<p align="center">
-  <video src="https://github.com/harshsinghhsr/gatehouse/releases/download/v0.1.0/gatehouse.mp4" width="900" controls></video>
-</p>
+https://github.com/user-attachments/assets/9965daac-5e55-4d67-a4ac-673e2cc25981
 
 <p align="center">
   <em>Fifty-eight seconds: the problem, where Gatehouse sits, what it refuses, and what LiteLLM charges for.</em>
